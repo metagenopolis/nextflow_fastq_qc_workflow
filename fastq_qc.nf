@@ -1,4 +1,5 @@
 
+params.skip_fastp = false
 params.fastq_ext  = ".fastq.gz"
 params.fwd_suffix = "_1"
 params.rev_suffix = "_2"
@@ -24,6 +25,7 @@ def available_adapters = [
 params.adapters = null
 params.fastp_opts = ""
 
+params.skip_host_removal = false
 def available_hosts = [
     'Homo_sapiens',
     'Sus_scrofa',
@@ -70,6 +72,9 @@ FASTQ FILES PARAMETERS:
                                       Default: ${params.rev_suffix}
 
 FASTP PARAMETERS:
+    --skip_fastp                      Skip read trimming and adapter removal
+                                      Default: ${params.skip_fastp}
+
     --adapters SEQUENCING_ADAPTERS    Name of sequencing adapters to be removed from raw reads
                                       Supported adapters: ${available_adapters.keySet().join(', ')}
                                       Default: ${params.adapters}
@@ -83,6 +88,9 @@ FASTP PARAMETERS:
     --fastp_opts PARAMS               Additional command-line options to pass directly to fastp
 
 HOST REMOVAL PARAMETERS:
+    --skip_host_removal               Skip host-derived reads removal
+                                      Default: ${params.skip_host_removal}
+
     --host HOST                       Reads mapped to the HOST genome will be discarded
                                       Supported hosts: ${available_hosts.join(', ')}
                                       Default: ${params.host}
@@ -117,7 +125,7 @@ def project_name = !params.project_name ? file(params.input_dir).toAbsolutePath(
 
 def selected_adapters = null
 def fastp_opts = params.fastp_opts ?: ''
-if (params.adapters) {
+if (!params.skip_fastp && params.adapters) {
     if( !available_adapters.containsKey(params.adapters) ) {
         error "Unknown sequencing adapters: ${params.adapters}\n" +
               "Supported adapters: ${available_adapters.keySet().join(', ')}"
@@ -126,16 +134,17 @@ if (params.adapters) {
     fastp_opts += " ${selected_adapters.fastp_opts}"
 }
 
-
-if (!available_hosts.contains(params.host) ) {
-    error "Unknown host: ${params.host}\n" +
-          "Supported hosts: ${available_hosts.join(', ')}"
+def host_genome = null
+def host_index = null
+if (!params.skip_host_removal) {
+    if (!available_hosts.contains(params.host) ) {
+        error "Unknown host: ${params.host}\n" +
+            "Supported hosts: ${available_hosts.join(', ')}"
+    }
+    def host_index_dir = new File("${params.host_index_parent_dir}/${params.host}_default").getCanonicalPath()
+    host_genome = new File(host_index_dir).getName()
+    host_index = "${host_index_dir}/fasta/${host_genome}_dnaspace_index"
 }
-def host_index_dir = new File("${params.host_index_parent_dir}/${params.host}_default").getCanonicalPath()
-def host_genome = new File(host_index_dir).getName()
-def host_index = "${host_index_dir}/fasta/${host_genome}_dnaspace_index"
-
-
 
 process fastp_pe {
     tag "sample: $sample_name run: $run_name"
@@ -158,6 +167,7 @@ process fastp_pe {
     file("${sample_name}/${run_name}.fastp_report.html"), emit: fastp_reports
 
     publishDir "${params.output_dir}", mode: 'copy', pattern: "${sample_name}/*.fastp_report.{html,json}"
+    publishDir "${params.output_dir}", mode: 'copy', pattern: "${sample_name}/*${params.fastq_ext}", enabled: params.skip_host_removal
 
     beforeScript 'source /usr/share/modules/init/bash'
     module 'fastp/1.0.1'
@@ -204,6 +214,7 @@ process fastp_se {
     file("${sample_name}/${run_name}.fastp_report.html"), emit: fastp_reports
 
     publishDir "${params.output_dir}", mode: 'copy', pattern: "${sample_name}/*.fastp_report.{html,json}"
+    publishDir "${params.output_dir}", mode: 'copy', pattern: "${sample_name}/*${params.fastq_ext}", enabled: params.skip_host_removal
 
     beforeScript 'source /usr/share/modules/init/bash'
     module 'fastp/1.0.1'
@@ -322,7 +333,7 @@ process host_removal_se {
     """
 }
 
-process create_ini_files {
+process create_ini_json_files {
     tag "sample: $sample_name run: $run_name tag: $tag"
 
     cpus 4
@@ -540,33 +551,44 @@ workflow {
     validated_raw_se_runs_ch = validate_raw_se_runs(raw_runs_ch.single_end)
     raw_read_counts_se_ch = extract_read_counts_se(validated_raw_se_runs_ch)
    
+    if (!params.skip_fastp) {
+        // Run fastp on raw paired FASTQ files
+        after_fastp_pe_runs_ch = fastp_pe(raw_runs_ch.paired_end).fastq_files
+        // Run fastp on raw single FASTQ files
+        after_fastp_se_runs_ch = fastp_se(raw_runs_ch.single_end).fastq_file
 
-    // Run fastp on raw paired FASTQ files
-    after_fastp_pe_runs_ch = fastp_pe(raw_runs_ch.paired_end)
-    // Run fastp on raw single FASTQ files
-    after_fastp_se_runs_ch = fastp_se(raw_runs_ch.single_end)
+        // Check integrity of paired FASTQ files after fastp
+        after_fastp_validated_pe_runs_ch = validate_after_fastp_pe_runs(after_fastp_pe_runs_ch)
+        after_fastp_read_counts_pe_ch = extract_read_counts_pe(after_fastp_validated_pe_runs_ch)
+        // Check integrity of single FASTQ files after fastp
+        after_fastp_validated_se_runs_ch = validate_after_fastp_se_runs(after_fastp_se_runs_ch)
+        after_fastp_read_counts_se_ch = extract_read_counts_se(after_fastp_validated_se_runs_ch)
+    } else {
+        after_fastp_pe_runs_ch = raw_runs_ch.paired_end
+        after_fastp_read_counts_pe_ch = raw_read_counts_pe_ch
 
-    // Check integrity of paired FASTQ files after fastp
-    after_fastp_validated_pe_runs_ch = validate_after_fastp_pe_runs(after_fastp_pe_runs_ch.fastq_files)
-    after_fastp_read_counts_pe_ch = extract_read_counts_pe(after_fastp_validated_pe_runs_ch)
-    // Check integrity of single FASTQ files after fastp
-    after_fastp_validated_se_runs_ch = validate_after_fastp_se_runs(after_fastp_se_runs_ch.fastq_file)
-    after_fastp_read_counts_se_ch = extract_read_counts_se(after_fastp_validated_se_runs_ch)
+        after_fastp_se_runs_ch = raw_runs_ch.single_end
+        after_fastp_read_counts_se_ch = raw_read_counts_se_ch
+    }
 
 
-    log.info "Selected reference genome for host ${params.host}: ${host_genome}"
-    // Discard reads that map to the host genome in paired FASTQ files
-    after_host_removal_pe_runs_ch = host_removal_pe(after_fastp_pe_runs_ch.fastq_files)
-    // Discard reads that map to the host genome in single FASTQ files
-    after_host_removal_se_runs_ch = host_removal_se(after_fastp_se_runs_ch.fastq_file)
+    if (!params.skip_host_removal) {
+        log.info "Selected reference genome for host ${params.host}: ${host_genome}"
+        // Discard reads that map to the host genome in paired FASTQ files
+        after_host_removal_pe_runs_ch = host_removal_pe(after_fastp_pe_runs_ch)
+        // Discard reads that map to the host genome in single FASTQ files
+        after_host_removal_se_runs_ch = host_removal_se(after_fastp_se_runs_ch)
 
-    // Check integrity of paired FASTQ files after host removal
-    after_host_removal_validated_pe_runs_ch =  validate_after_host_removal_pe_runs(after_host_removal_pe_runs_ch.fastq_files)
-    after_host_removal_read_counts_pe_ch = extract_read_counts_pe(after_host_removal_validated_pe_runs_ch)
-    // Check integrity of single FASTQ files after host removal
-    after_host_removal_validated_se_runs_ch =  validate_after_host_removal_se_runs(after_host_removal_se_runs_ch.fastq_file)
-    after_host_removal_read_counts_se_ch = extract_read_counts_se(after_host_removal_validated_se_runs_ch)
-
+        // Check integrity of paired FASTQ files after host removal
+        after_host_removal_validated_pe_runs_ch =  validate_after_host_removal_pe_runs(after_host_removal_pe_runs_ch.fastq_files)
+        after_host_removal_read_counts_pe_ch = extract_read_counts_pe(after_host_removal_validated_pe_runs_ch)
+        // Check integrity of single FASTQ files after host removal
+        after_host_removal_validated_se_runs_ch =  validate_after_host_removal_se_runs(after_host_removal_se_runs_ch.fastq_file)
+        after_host_removal_read_counts_se_ch = extract_read_counts_se(after_host_removal_validated_se_runs_ch)
+    } else {
+        after_host_removal_read_counts_pe_ch = after_fastp_read_counts_pe_ch
+        after_host_removal_read_counts_se_ch = after_fastp_read_counts_se_ch
+    }
     // Create a channel that indicates for each FASTQ file
     // 1. the number of raw reads
     // 2. the number of reads after fastp
@@ -608,5 +630,5 @@ workflow {
      
     combined_read_counts_ch = combined_read_counts_pe_ch.mix(combined_read_counts_se_ch)
 
-    create_ini_files(combined_read_counts_ch)
+    create_ini_json_files(combined_read_counts_ch)
 }
