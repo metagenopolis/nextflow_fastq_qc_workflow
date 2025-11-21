@@ -1,0 +1,21 @@
+{
+  "sample_info": {
+    "sample_name": "__SAMPLE_NAME",
+    "tag": "__TAG",
+    "full_sample_name": "__RUN_NAME"
+  },
+  "sample_file": {
+    "fastq_file": "__FASTQ_FILE"
+  },
+  "additional_info": {
+    "sample_info": {
+      "project_name": "__PROJECT_NAME",
+      "sample_name": "__SAMPLE_NAME",
+      "tag": "__TAG",
+      "sequenced_raw_read_count": "__RAW_READ_COUNT",
+      "host_read_count": "__HOST_READ_COUNT",
+      "low_quality_read_count": "__LOW_QUALITY_READ_COUNT",
+      "sequenced_read_count": "__AFTER_HOST_REMOVAL_READ_COUNT"
+    }
+  }
+}
