@@ -137,6 +137,11 @@ if (!params.skip_fastp && params.adapters) {
 def host_genome = null
 def host_index = null
 if (!params.skip_host_removal) {
+    if (!params.host)
+    {
+        error "Missing required parameter: --host"
+    }
+
     if (!available_hosts.contains(params.host) ) {
         error "Unknown host: ${params.host}\n" +
             "Supported hosts: ${available_hosts.join(', ')}"
@@ -546,28 +551,33 @@ workflow {
     // Check integrity of raw paired FASTQ files
     validated_raw_pe_runs_ch = validate_raw_pe_runs(raw_runs_ch.paired_end)
     raw_read_counts_pe_ch = extract_read_counts_pe(validated_raw_pe_runs_ch)
+    validated_raw_pe_runs_ch = validated_raw_pe_runs_ch.map { items -> items[0..-2] }
     
     // Check integrity of raw single FASTQ files
     validated_raw_se_runs_ch = validate_raw_se_runs(raw_runs_ch.single_end)
     raw_read_counts_se_ch = extract_read_counts_se(validated_raw_se_runs_ch)
+    validated_raw_se_runs_ch = validated_raw_se_runs_ch.map { items -> items[0..-2] }
    
     if (!params.skip_fastp) {
         // Run fastp on raw paired FASTQ files
-        after_fastp_pe_runs_ch = fastp_pe(raw_runs_ch.paired_end).fastq_files
+        after_fastp_pe_runs_ch = fastp_pe(validated_raw_pe_runs_ch).fastq_files
         // Run fastp on raw single FASTQ files
-        after_fastp_se_runs_ch = fastp_se(raw_runs_ch.single_end).fastq_file
+        after_fastp_se_runs_ch = fastp_se(validated_raw_se_runs_ch).fastq_file
 
         // Check integrity of paired FASTQ files after fastp
         after_fastp_validated_pe_runs_ch = validate_after_fastp_pe_runs(after_fastp_pe_runs_ch)
         after_fastp_read_counts_pe_ch = extract_read_counts_pe(after_fastp_validated_pe_runs_ch)
+        after_fastp_validated_pe_runs_ch = after_fastp_validated_pe_runs_ch.map { items -> items[0..-2] }
+
         // Check integrity of single FASTQ files after fastp
         after_fastp_validated_se_runs_ch = validate_after_fastp_se_runs(after_fastp_se_runs_ch)
         after_fastp_read_counts_se_ch = extract_read_counts_se(after_fastp_validated_se_runs_ch)
+        after_fastp_validated_se_runs_ch = after_fastp_validated_se_runs_ch.map { items -> items[0..-2] }
     } else {
-        after_fastp_pe_runs_ch = raw_runs_ch.paired_end
+        after_fastp_validated_pe_runs_ch = validated_raw_pe_runs_ch
         after_fastp_read_counts_pe_ch = raw_read_counts_pe_ch
 
-        after_fastp_se_runs_ch = raw_runs_ch.single_end
+        after_fastp_validated_se_runs_ch = validated_raw_se_runs_ch
         after_fastp_read_counts_se_ch = raw_read_counts_se_ch
     }
 
@@ -575,16 +585,19 @@ workflow {
     if (!params.skip_host_removal) {
         log.info "Selected reference genome for host ${params.host}: ${host_genome}"
         // Discard reads that map to the host genome in paired FASTQ files
-        after_host_removal_pe_runs_ch = host_removal_pe(after_fastp_pe_runs_ch)
+        after_host_removal_pe_runs_ch = host_removal_pe(after_fastp_validated_pe_runs_ch)
         // Discard reads that map to the host genome in single FASTQ files
-        after_host_removal_se_runs_ch = host_removal_se(after_fastp_se_runs_ch)
+        after_host_removal_se_runs_ch = host_removal_se(after_fastp_validated_se_runs_ch)
 
         // Check integrity of paired FASTQ files after host removal
         after_host_removal_validated_pe_runs_ch =  validate_after_host_removal_pe_runs(after_host_removal_pe_runs_ch.fastq_files)
         after_host_removal_read_counts_pe_ch = extract_read_counts_pe(after_host_removal_validated_pe_runs_ch)
+        after_host_removal_validated_pe_runs_ch = after_host_removal_validated_pe_runs_ch.map { items -> items[0..-2] }
+
         // Check integrity of single FASTQ files after host removal
         after_host_removal_validated_se_runs_ch =  validate_after_host_removal_se_runs(after_host_removal_se_runs_ch.fastq_file)
         after_host_removal_read_counts_se_ch = extract_read_counts_se(after_host_removal_validated_se_runs_ch)
+        after_host_removal_validated_se_runs_ch = after_host_removal_validated_se_runs_ch.map { items -> items[0..-2] }
     } else {
         after_host_removal_read_counts_pe_ch = after_fastp_read_counts_pe_ch
         after_host_removal_read_counts_se_ch = after_fastp_read_counts_se_ch
