@@ -139,7 +139,8 @@ def host_index = null
 if (!params.skip_host_removal) {
     if (!params.host)
     {
-        error "Missing required parameter: --host"
+        error "Missing required parameter: --host\n" +
+              "If you do not want to perform host removal, use --skip_host_removal"
     }
 
     if (!available_hosts.contains(params.host) ) {
@@ -358,8 +359,10 @@ process create_ini_json_files {
     publishDir "${params.output_dir}", mode: 'copy'
 
     script:
-    def census_stage_0_ini_file = fastq_file.getName().replaceAll("${params.fastq_ext}\$", "") + "_census_stage_0.ini"
-    def census_stage_0_json_file = fastq_file.getName().replaceAll("${params.fastq_ext}\$", "") + "_census_stage_0.json"
+    def full_sample_name = fastq_file.getName().replaceAll("${params.fastq_ext}\$", "")
+    def census_stage_0_ini_file = full_sample_name + "_census_stage_0.ini"
+    def census_stage_0_json_file = full_sample_name + "_census_stage_0.json"
+    def sequencing_device =  params.adapters ? params.adapters.split('_')[0] : "NA"
     def low_quality_read_count = raw_read_count - after_fastp_read_count
     def host_read_count = after_fastp_read_count -after_host_removal_read_count
     """
@@ -367,9 +370,10 @@ process create_ini_json_files {
     sed \\
     -e s/__PROJECT_NAME/${project_name}/ \\
     -e s/__SAMPLE_NAME/${sample_name}/ \\
-    -e s/__RUN_NAME/${run_name}/ \\
+    -e s/__FULL_SAMPLE_NAME/${full_sample_name}/ \\
     -e s/__FASTQ_FILE/${fastq_file}/ \\
     -e s/__TAG/${tag}/ \\
+    -e s/__SEQUENCING_DEVICE/${sequencing_device}/ \\
     -e s/__RAW_READ_COUNT/${raw_read_count}/ \\
     -e s/__AFTER_HOST_REMOVAL_READ_COUNT/${after_host_removal_read_count}/ \\
     -e s/__HOST_READ_COUNT/${host_read_count}/ \\
@@ -379,9 +383,10 @@ process create_ini_json_files {
      sed \\
     -e s/__PROJECT_NAME/${project_name}/ \\
     -e s/__SAMPLE_NAME/${sample_name}/ \\
-    -e s/__RUN_NAME/${run_name}/ \\
+    -e s/__FULL_SAMPLE_NAME/${full_sample_name}/ \\
     -e s/__FASTQ_FILE/${fastq_file}/ \\
     -e s/__TAG/${tag}/ \\
+    -e s/__SEQUENCING_DEVICE/${sequencing_device}/ \\
     -e s/__RAW_READ_COUNT/${raw_read_count}/ \\
     -e s/__AFTER_HOST_REMOVAL_READ_COUNT/${after_host_removal_read_count}/ \\
     -e s/__HOST_READ_COUNT/${host_read_count}/ \\
