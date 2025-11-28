@@ -2,7 +2,7 @@
   "sample_info": {
     "sample_name": "__SAMPLE_NAME",
     "tag": "__TAG",
-    "full_sample_name": "__RUN_NAME"
+    "full_sample_name": "__FULL_SAMPLE_NAME"
   },
   "sample_file": {
     "fastq_file": "__FASTQ_FILE"
@@ -12,6 +12,7 @@
       "project_name": "__PROJECT_NAME",
       "sample_name": "__SAMPLE_NAME",
       "tag": "__TAG",
+      "sequencing_device": "__SEQUENCING_DEVICE",
       "sequenced_raw_read_count": "__RAW_READ_COUNT",
       "host_read_count": "__HOST_READ_COUNT",
       "low_quality_read_count": "__LOW_QUALITY_READ_COUNT",
