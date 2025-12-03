@@ -41,6 +41,8 @@ def available_hosts = [
 ]
 params.host = null
 params.host_index_parent_dir = '/biodatabank/meteor-data/reference.ng'
+params.save_host_reads = false
+params.host_reads_suffix = '_Host'
 
 params.project_name = null
 params.help = false
@@ -95,6 +97,12 @@ HOST REMOVAL PARAMETERS:
                                       Supported hosts: ${available_hosts.join(', ')}
                                       Default: ${params.host}
 
+    --save_host_reads                 Save host-derived reads to separate FASTQ files
+                                      Default: ${params.save_host_reads}
+
+    --host_reads_suffix HOST_SUFFIX   Suffix inserted into FASTQ filenames with host-derived reads.
+                                      Default: ${params.host_reads_suffix}
+
 OTHER PARAMETERS:
     --project_name PROJECT_NAME       Name of the sequencing project
                                       Default: Name of the parent directory containing the input_dir
@@ -106,12 +114,20 @@ WORKING DIRECTORY:
 
 EXAMPLE:
     nextflow run ${workflow.scriptName} \\
-        -w             ${System.getenv('HOME')} \\
-        --input_dir    /projects/my_project/sample_raw \\
-        --output_dir    /projects/my_project/sample_fastp_noHost \\
-        --fastq_ext    .fq.gz \\
-        --fwd_suffix   _1.clean.rmHost \\
-        --rev_suffix   _2.clean.rmHost \\
+        -w                  ${System.getenv('HOME')} \\
+        --input_dir         /projects/my_project/sample_raw \\
+        --output_dir        /projects/my_project/sample_fastp_noHost \\
+        --fastq_ext         .fq.gz \\
+        --fwd_suffix        _1.clean.rmHost \\
+        --rev_suffix        _2.clean.rmHost \\
+        --adapters          DNBseq \\
+        --n_base_limit      1 \\
+        --length_required   60 \\
+        --fastp_opts='--trim_poly_x'  \\
+        --host              Homo_sapiens \\
+        --save_host_reads \\
+        --host_reads_suffix '_fromHost' \\
+        --project_name      my_project
 """
     exit 0
 }
@@ -166,11 +182,11 @@ process fastp_pe {
 
     output:
     tuple val(sample_name), val(run_name),
-    file("${sample_name}/${fwd_fastq_file}"),
-    file("${sample_name}/${rev_fastq_file}"), emit: fastq_files
+    path("${sample_name}/${fwd_fastq_file}"),
+    path("${sample_name}/${rev_fastq_file}"), emit: fastq_files
 
-    tuple file("${sample_name}/${run_name}.fastp_report.json"),
-    file("${sample_name}/${run_name}.fastp_report.html"), emit: fastp_reports
+    tuple path("${sample_name}/${run_name}.fastp_report.json"),
+    path("${sample_name}/${run_name}.fastp_report.html"), emit: fastp_reports
 
     publishDir "${params.output_dir}", mode: 'copy', pattern: "${sample_name}/*.fastp_report.{html,json}"
     publishDir "${params.output_dir}", mode: 'copy', pattern: "${sample_name}/*${params.fastq_ext}", enabled: params.skip_host_removal
@@ -214,10 +230,10 @@ process fastp_se {
 
     output:
     tuple val(sample_name), val(run_name),
-    file("${sample_name}/${fastq_file}"), emit: fastq_file
+    path("${sample_name}/${fastq_file}"), emit: fastq_file
 
-    tuple file("${sample_name}/${run_name}.fastp_report.json"),
-    file("${sample_name}/${run_name}.fastp_report.html"), emit: fastp_reports
+    tuple path("${sample_name}/${run_name}.fastp_report.json"),
+    path("${sample_name}/${run_name}.fastp_report.html"), emit: fastp_reports
 
     publishDir "${params.output_dir}", mode: 'copy', pattern: "${sample_name}/*.fastp_report.{html,json}"
     publishDir "${params.output_dir}", mode: 'copy', pattern: "${sample_name}/*${params.fastq_ext}", enabled: params.skip_host_removal
@@ -256,8 +272,12 @@ process host_removal_pe {
 
     output:
     tuple val(sample_name), val(run_name),
-    file("${sample_name}/${fwd_fastq_file}"),
-    file("${sample_name}/${rev_fastq_file}"), emit: fastq_files
+    path("${sample_name}/${fwd_fastq_file}"),
+    path("${sample_name}/${rev_fastq_file}"), emit: fastq_files
+
+    tuple path("${sample_name}/*${params.host_reads_suffix}${params.fwd_suffix}${params.fastq_ext}"),
+    path("${sample_name}/*${params.host_reads_suffix}${params.rev_suffix}${params.fastq_ext}"),
+    optional: true, emit: host_reads_fastq_file
 
     publishDir "${params.output_dir}", mode: 'copy'
 
@@ -266,6 +286,33 @@ process host_removal_pe {
     module 'samtools/1.20'
 
     script:
+    def host_reads_fwd_fastq_file =
+    fwd_fastq_file
+        .toString()
+        .replaceAll(
+            "${params.fwd_suffix}${params.fastq_ext}\$",
+            "${params.host_reads_suffix}${params.fwd_suffix}${params.fastq_ext}"
+        )
+
+    def host_reads_rev_fastq_file =
+    rev_fastq_file
+        .toString()
+        .replaceAll(
+            "${params.rev_suffix}${params.fastq_ext}\$",
+            "${params.host_reads_suffix}${params.rev_suffix}${params.fastq_ext}"
+        )
+
+    def save_host_reads_cmd = params.save_host_reads ?
+    """
+    samtools \\
+    fastq \\
+    -G 12 \\
+    -1 ${sample_name}/${host_reads_fwd_fastq_file} \\
+    -2 ${sample_name}/${host_reads_rev_fastq_file} \\
+    -N -c 6 \\
+    -@ ${task.cpus} \\
+    ${run_name}.bam
+    """ : ""
     """
     bowtie2 \\
     -1 ${fwd_fastq_file} \\
@@ -287,6 +334,8 @@ process host_removal_pe {
     -@ ${task.cpus} \\
     ${run_name}.bam
 
+    ${save_host_reads_cmd}
+
     # Cleanup
     rm ${run_name}.bam
     """
@@ -306,7 +355,8 @@ process host_removal_se {
 
     output:
     tuple val(sample_name), val(run_name),
-    file("${sample_name}/${fastq_file}"), emit: fastq_file
+    path("${sample_name}/${fastq_file}"), emit: fastq_file
+    path("${sample_name}/*${params.host_reads_suffix}${params.fastq_ext}"), optional: true, emit: host_reads_fastq_file
 
     publishDir "${params.output_dir}", mode: 'copy'
 
@@ -315,6 +365,24 @@ process host_removal_se {
     module 'samtools/1.20'
 
     script:
+    def host_reads_fastq_file =
+    fastq_file
+        .toString()
+        .replaceAll(
+            "${params.fastq_ext}\$",
+            "${params.host_reads_suffix}${params.fastq_ext}"
+        )
+
+    def save_host_reads_cmd = params.save_host_reads ?
+    """
+    samtools \\
+    fastq \\
+    -G 4 \\
+    -0 ${sample_name}/${host_reads_fastq_file} \\
+    -N -c 6 \\
+    -@ ${task.cpus} \\
+    ${run_name}.bam
+    """ : ""
     """
     bowtie2 \\
     -U ${fastq_file} \\
@@ -333,6 +401,8 @@ process host_removal_se {
     -N -c 6 \\
     -@ ${task.cpus} \\
     ${run_name}.bam
+
+    ${save_host_reads_cmd}
 
     # Cleanup
     rm ${run_name}.bam
@@ -353,8 +423,8 @@ process create_ini_json_files {
     val(raw_read_count), val(after_fastp_read_count), val(after_host_removal_read_count)
 
     output:
-    file("${sample_name}/*_census_stage_0.ini")
-    file("${sample_name}/*_census_stage_0.json")
+    path("${sample_name}/*_census_stage_0.ini")
+    path("${sample_name}/*_census_stage_0.json")
 
     publishDir "${params.output_dir}", mode: 'copy'
 
@@ -378,7 +448,7 @@ process create_ini_json_files {
     -e s/__AFTER_HOST_REMOVAL_READ_COUNT/${after_host_removal_read_count}/ \\
     -e s/__HOST_READ_COUNT/${host_read_count}/ \\
     -e s/__LOW_QUALITY_READ_COUNT/${low_quality_read_count}/ \\
-    ${baseDir}/template_census_stage_0.ini > ${sample_name}/${census_stage_0_ini_file}
+    ${baseDir}/templates/template_census_stage_0.ini > ${sample_name}/${census_stage_0_ini_file}
 
      sed \\
     -e s/__PROJECT_NAME/${project_name}/ \\
@@ -391,17 +461,17 @@ process create_ini_json_files {
     -e s/__AFTER_HOST_REMOVAL_READ_COUNT/${after_host_removal_read_count}/ \\
     -e s/__HOST_READ_COUNT/${host_read_count}/ \\
     -e s/__LOW_QUALITY_READ_COUNT/${low_quality_read_count}/ \\
-    ${baseDir}/template_census_stage_0.json > ${sample_name}/${census_stage_0_json_file}
+    ${baseDir}/templates/template_census_stage_0.json > ${sample_name}/${census_stage_0_json_file}
     """
 }
 
 
-include { validate_pe_runs as validate_raw_pe_runs } from './validate_runs.nf'
-include { validate_se_runs as validate_raw_se_runs } from './validate_runs.nf'
-include { validate_pe_runs as validate_after_fastp_pe_runs } from './validate_runs.nf'
-include { validate_se_runs as validate_after_fastp_se_runs } from './validate_runs.nf'
-include { validate_pe_runs as validate_after_host_removal_pe_runs } from './validate_runs.nf'
-include { validate_se_runs as validate_after_host_removal_se_runs } from './validate_runs.nf'
+include { validate_pe_runs as validate_raw_pe_runs } from './include/validate_runs.nf'
+include { validate_se_runs as validate_raw_se_runs } from './include/validate_runs.nf'
+include { validate_pe_runs as validate_after_fastp_pe_runs } from './include/validate_runs.nf'
+include { validate_se_runs as validate_after_fastp_se_runs } from '././include/validate_runs.nf'
+include { validate_pe_runs as validate_after_host_removal_pe_runs } from './include/validate_runs.nf'
+include { validate_se_runs as validate_after_host_removal_se_runs } from './include/validate_runs.nf'
 
 workflow {
     def sample_dirs_ch = Channel
