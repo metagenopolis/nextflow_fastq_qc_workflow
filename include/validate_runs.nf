@@ -14,6 +14,8 @@ process validate_pe_runs {
     tuple val(sample_name), val(run_name), path(fwd_fastq_file), path(rev_fastq_file),
     file("${run_name}.read_count.tsv")
 
+    publishDir "${params.output_dir}/${sample_name}", mode: 'copy', pattern: "*${params.fastq_ext}", enabled: params.skip_host_removal
+
     beforeScript 'source /usr/share/modules/init/bash'
     module 'seqtk/1.4'
 
