@@ -43,6 +43,7 @@ params.host = null
 params.host_index_parent_dir = '/biodatabank/meteor-data/reference.ng'
 params.save_host_reads = false
 params.host_reads_suffix = '_Host'
+params.host_subdir= 'host'
 
 params.project_name = null
 params.help = false
@@ -103,6 +104,10 @@ HOST REMOVAL PARAMETERS:
     --host_reads_suffix HOST_SUFFIX   Suffix inserted into FASTQ filenames with host-derived reads.
                                       Default: ${params.host_reads_suffix}
 
+    --host_subdir DIRNAME             Name of the subdirectory (inside each sample folder) where
+                                      FASTQ files with host-derived reads will be saved.
+                                      Default: ${params.host_subdir}
+
 OTHER PARAMETERS:
     --project_name PROJECT_NAME       Name of the sequencing project
                                       Default: Name of the parent directory containing the input_dir
@@ -127,6 +132,7 @@ EXAMPLE:
         --host              Homo_sapiens \\
         --save_host_reads \\
         --host_reads_suffix '_fromHost' \\
+        --host_subdir host_reads
         --project_name      my_project
 """
     exit 0
@@ -275,9 +281,9 @@ process host_removal_pe {
     path("${sample_name}/${fwd_fastq_file}"),
     path("${sample_name}/${rev_fastq_file}"), emit: fastq_files
 
-    tuple path("${sample_name}/*${params.host_reads_suffix}${params.fwd_suffix}${params.fastq_ext}"),
-    path("${sample_name}/*${params.host_reads_suffix}${params.rev_suffix}${params.fastq_ext}"),
-    optional: true, emit: host_reads_fastq_file
+    tuple path("${sample_name}/${params.host_subdir}/*${params.host_reads_suffix}${params.fwd_suffix}${params.fastq_ext}"),
+    path("${sample_name}/${params.host_subdir}/*${params.host_reads_suffix}${params.rev_suffix}${params.fastq_ext}"),
+    optional: !params.save_host_reads, emit: host_reads_fastq_file
 
     publishDir "${params.output_dir}", mode: 'copy'
 
@@ -302,13 +308,16 @@ process host_removal_pe {
             "${params.host_reads_suffix}${params.rev_suffix}${params.fastq_ext}"
         )
 
+    def host_subdir = "${sample_name}/${params.host_subdir}"
     def save_host_reads_cmd = params.save_host_reads ?
     """
+    mkdir ${host_subdir}
+
     samtools \\
     fastq \\
     -G 12 \\
-    -1 ${sample_name}/${host_reads_fwd_fastq_file} \\
-    -2 ${sample_name}/${host_reads_rev_fastq_file} \\
+    -1 ${host_subdir}/${host_reads_fwd_fastq_file} \\
+    -2 ${host_subdir}/${host_reads_rev_fastq_file} \\
     -N -c 6 \\
     -@ ${task.cpus} \\
     ${run_name}.bam
@@ -356,7 +365,9 @@ process host_removal_se {
     output:
     tuple val(sample_name), val(run_name),
     path("${sample_name}/${fastq_file}"), emit: fastq_file
-    path("${sample_name}/*${params.host_reads_suffix}${params.fastq_ext}"), optional: true, emit: host_reads_fastq_file
+
+    path("${sample_name}/${params.host_subdir}/*${params.host_reads_suffix}${params.fastq_ext}"),
+    optional: !params.save_host_reads, emit: host_reads_fastq_file
 
     publishDir "${params.output_dir}", mode: 'copy'
 
@@ -373,12 +384,15 @@ process host_removal_se {
             "${params.host_reads_suffix}${params.fastq_ext}"
         )
 
+    def host_subdir = "${sample_name}/${params.host_subdir}"
     def save_host_reads_cmd = params.save_host_reads ?
     """
+    mkdir ${host_subdir}
+
     samtools \\
     fastq \\
     -G 4 \\
-    -0 ${sample_name}/${host_reads_fastq_file} \\
+    -0 ${host_subdir}/${host_reads_fastq_file} \\
     -N -c 6 \\
     -@ ${task.cpus} \\
     ${run_name}.bam
