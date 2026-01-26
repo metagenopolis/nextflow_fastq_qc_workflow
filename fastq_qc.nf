@@ -694,7 +694,7 @@ workflow {
     // Create a channel that indicates for each FASTQ file
     // 1. the number of raw reads
     // 2. the number of reads after fastp
-    // 3. the number of reads after fastp
+    // 3. the number of reads after fastp and host removal
     combined_read_counts_pe_ch = raw_read_counts_pe_ch
         .join(after_fastp_read_counts_pe_ch, by: [0,1])
         .join(after_host_removal_read_counts_pe_ch, by: [0,1])
