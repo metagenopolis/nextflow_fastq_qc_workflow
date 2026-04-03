@@ -1,3 +1,10 @@
+import groovy.json.JsonOutput
+import java.time.format.DateTimeFormatter
+
+def fastp_version = '1.0.1'
+def bowtie2_version = '2.5.4'
+def samtools_version = '1.20'
+
 
 params.skip_fastp = false
 params.fastq_ext  = ".fastq.gz"
@@ -169,7 +176,7 @@ if (!params.skip_host_removal) {
         error "Unknown host: ${params.host}\n" +
             "Supported hosts: ${available_hosts.join(', ')}"
     }
-    def host_index_dir = new File("${params.host_index_parent_dir}/${params.host}_default").getCanonicalPath()
+    host_index_dir = new File("${params.host_index_parent_dir}/${params.host}_default").getCanonicalPath()
     host_genome = new File(host_index_dir).getName()
     host_index = "${host_index_dir}/fasta/${host_genome}_dnaspace_index"
 }
@@ -198,7 +205,7 @@ process fastp_pe {
     publishDir "${params.output_dir}", mode: 'copy', pattern: "${sample_name}/*${params.fastq_ext}", enabled: params.skip_host_removal
 
     beforeScript 'source /usr/share/modules/init/bash'
-    module 'fastp/1.0.1'
+    module "fastp/${fastp_version}"
 
     script:
     def fwd_adapter = selected_adapters ? " --adapter_sequence    ${selected_adapters.fwd}" : ""
@@ -245,7 +252,7 @@ process fastp_se {
     publishDir "${params.output_dir}", mode: 'copy', pattern: "${sample_name}/*${params.fastq_ext}", enabled: params.skip_host_removal
 
     beforeScript 'source /usr/share/modules/init/bash'
-    module 'fastp/1.0.1'
+    module "fastp/${fastp_version}"
 
     script:
     """
@@ -288,8 +295,8 @@ process host_removal_pe {
     publishDir "${params.output_dir}", mode: 'copy'
 
     beforeScript 'source /usr/share/modules/init/bash'
-    module 'bowtie2/2.5.4'
-    module 'samtools/1.20'
+    module "bowtie2/${bowtie2_version}"
+    module "samtools/${samtools_version}"
 
     script:
     def host_reads_fwd_fastq_file =
@@ -372,8 +379,8 @@ process host_removal_se {
     publishDir "${params.output_dir}", mode: 'copy'
 
     beforeScript 'source /usr/share/modules/init/bash'
-    module 'bowtie2/2.5.4'
-    module 'samtools/1.20'
+    module "bowtie2/${bowtie2_version}"
+    module "samtools/${samtools_version}"
 
     script:
     def host_reads_fastq_file =
@@ -733,4 +740,69 @@ workflow {
     combined_read_counts_ch = combined_read_counts_pe_ch.mix(combined_read_counts_se_ch)
 
     create_ini_json_files(combined_read_counts_ch)
+}
+
+workflow.onComplete {
+    def datetime_formatter = DateTimeFormatter.ISO_OFFSET_DATE_TIME
+
+    def global_params = [
+        project_name: project_name,
+        input_dir: file(params.input_dir).toAbsolutePath().toString(),
+        output_dir: file(params.output_dir).toAbsolutePath().toString()
+    ]
+    global_params += params.subMap(['fastq_ext', 'fwd_suffix', 'rev_suffix'])
+
+    def fastp_params = [ skip_fastp: params.skip_fastp ]
+    if (!params.skip_fastp) {
+        fastp_params['fastp_version'] = fastp_version
+        fastp_params += params.subMap(['adapters', 'n_base_limit', 'length_required'])
+        if (params.adapters)
+        {
+            fastp_params['adapters_fwd'] = selected_adapters.fwd
+            fastp_params['adapters_rev'] = selected_adapters.rev
+        }
+        fastp_params['fastp_opts'] = fastp_opts
+    }
+
+    def host_removal_params = [ skip_host_removal: params.skip_host_removal ]
+    if (!params.skip_host_removal) {
+        host_removal_params += [
+            bowtie2_version: bowtie2_version,
+            samtools_version: samtools_version,
+            host: params.host,
+            host_index_dir: host_index_dir,
+            save_host_reads: params.save_host_reads
+        ]
+
+        if (params.save_host_reads) {
+            host_removal_params += params.subMap(['host_reads_suffix', 'host_subdir'])
+        }
+    }
+
+    def metadata = [
+        workflow: [
+            name: workflow.scriptName,
+            version: "git describe --tags".execute().text.trim()
+        ],
+        execution_info: [
+            username: System.getProperty("user.name"),
+            start_time: workflow.start.format(datetime_formatter),
+            end_time: workflow.complete.format(datetime_formatter),
+            duration: workflow.duration.toString()
+        ],
+        workflow_parameters: [
+            global: global_params,
+            fastp: fastp_params,
+            host_removal: host_removal_params
+        ]
+    ]
+
+    // Définition du chemin du fichier de sortie
+    def reportFile = file("${params.output_dir}/fastq_qc_workflow_summary.json")
+
+    // Création du répertoire parent si nécessaire et écriture du fichier
+    reportFile.parent.mkdirs()
+    reportFile.text = JsonOutput.prettyPrint(JsonOutput.toJson(metadata))
+
+    log.info "Workflow metadata saved to ${reportFile}"
 }
