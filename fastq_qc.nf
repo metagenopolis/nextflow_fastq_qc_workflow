@@ -1,9 +1,9 @@
 import groovy.json.JsonOutput
 import java.time.format.DateTimeFormatter
 
-def fastp_version = '1.0.1'
-def bowtie2_version = '2.5.4'
-def samtools_version = '1.20'
+def fastp_version = '1.3.1'
+def bowtie2_version = '2.5.5'
+def samtools_version = '1.23.1'
 
 
 params.skip_fastp = false
