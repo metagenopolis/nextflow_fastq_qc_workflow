@@ -52,6 +52,7 @@ params.save_host_reads = false
 params.host_reads_suffix = '_Host'
 params.host_subdir= 'host'
 
+params.sample_list = null
 params.project_name = null
 params.help = false
 
@@ -116,6 +117,9 @@ HOST REMOVAL PARAMETERS:
                                       Default: ${params.host_subdir}
 
 OTHER PARAMETERS:
+    --sample_list SAMPLE_LIST         Path to a text file listing the samples to process (one sample name per line).
+                                      Default: ${params.sample_list}
+
     --project_name PROJECT_NAME       Name of the sequencing project
                                       Default: Name of the parent directory containing the input_dir
 
@@ -495,8 +499,23 @@ include { validate_pe_runs as validate_after_host_removal_pe_runs } from './incl
 include { validate_se_runs as validate_after_host_removal_se_runs } from './include/validate_runs.nf'
 
 workflow {
-    def sample_dirs_ch = Channel
-        .fromPath("${params.input_dir}/*", type: 'dir')
+    def sample_dirs_ch = params.sample_list \
+        ? Channel // If sample_list is provided, grab samples from list
+            .fromPath(params.sample_list)
+            .splitText()
+            .map { line ->
+                def sample_name = line.trim()
+                def sample_dir = file("${params.input_dir}/${sample_name}")
+
+                if (!sample_dir.isDirectory()) {
+                      error "Sample '${sample_name}' (from ${params.sample_list}) " +
+                      "was not found in input directory ${params.input_dir}"
+                }
+
+                return sample_dir
+            }
+        : Channel // If sample_list is not provided, use all subdirectories
+            .fromPath("${params.input_dir}/*", type: 'dir')
 
     def sample_count_ch = sample_dirs_ch.count()
     sample_count_ch
@@ -750,7 +769,7 @@ workflow.onComplete {
         input_dir: file(params.input_dir).toAbsolutePath().toString(),
         output_dir: file(params.output_dir).toAbsolutePath().toString()
     ]
-    global_params += params.subMap(['fastq_ext', 'fwd_suffix', 'rev_suffix'])
+    global_params += params.subMap(['sample_list', 'fastq_ext', 'fwd_suffix', 'rev_suffix'])
 
     def fastp_params = [ skip_fastp: params.skip_fastp ]
     if (!params.skip_fastp) {
