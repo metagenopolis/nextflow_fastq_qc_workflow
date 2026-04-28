@@ -533,8 +533,8 @@ workflow {
             }.sort()
 
             if (all_fastq_files.isEmpty()) {
-                throw new RuntimeException("No FASTQ files found in directory ${sample_dir}\n" +
-                "Check that your FASTQ file extension matches the value of --fastq_ext (currently '${params.fastq_ext}')")
+                error "No FASTQ files found in directory ${sample_dir}\n" +
+                "Check that your FASTQ file extension matches the value of --fastq_ext (currently '${params.fastq_ext}')"
             }
 
             def fwd_fastq_files = all_fastq_files.findAll { it.name.endsWith("${params.fwd_suffix}${params.fastq_ext}") }
@@ -580,15 +580,11 @@ workflow {
                 // PE run
                 if (has_pe && !has_se) {
                     if (run_fastq_files.rev == null) {
-                        throw new RuntimeException(
-                            "Paired-end mismatch in sample '${sample_name}', run '${run_name}'\n" +
-                            " Found forward file ${run_fastq_files.fwd.name} but not reverse file."
-                        )
+                        error "Paired-end mismatch in sample '${sample_name}', run '${run_name}'\n" +
+                        " Found forward file ${run_fastq_files.fwd.name} but not reverse file."
                     } else if (run_fastq_files.fwd == null) {
-                        throw new RuntimeException(
-                            "Paired-end mismatch in sample '${sample_name}', run '${run_name}'\n" +
-                            " Found reverse file ${run_fastq_files.rev.name} but not forward file."
-                        ) 
+                        error "Paired-end mismatch in sample '${sample_name}', run '${run_name}'\n" +
+                        " Found reverse file ${run_fastq_files.rev.name} but not forward file."
                     }
 
                     return [
