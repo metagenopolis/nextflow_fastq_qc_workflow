@@ -591,23 +591,23 @@ workflow {
                         ) 
                     }
 
-                    return tuple(
+                    return [
                         sample_name,
                         run_name,
                         'paired_end',
                         run_fastq_files.fwd,
                         run_fastq_files.rev
-                    )
+                    ]
                 }
                 // SE run
                 else if (has_se && !has_pe) {
-                    return tuple(
+                    return [
                         sample_name,
                         run_name,
                         'single_end',
                         run_fastq_files.se,
                         null
-                    )
+                    ]
                 }
                 // Mixed run (error)
                 else if (has_pe && has_se) {
@@ -624,10 +624,10 @@ workflow {
     raw_runs_ch = raw_runs_ch
         .branch { sample_name, run_name, library_layout, fwd_fastq_file, rev_fastq_file ->
             paired_end: library_layout == 'paired_end'
-                return tuple(sample_name, run_name, fwd_fastq_file, rev_fastq_file)
+                return [sample_name, run_name, fwd_fastq_file, rev_fastq_file]
 
             single_end: library_layout == 'single_end'
-                return tuple(sample_name, run_name, fwd_fastq_file)
+                return [sample_name, run_name, fwd_fastq_file]
     }
 
     def pe_run_count_ch = raw_runs_ch.paired_end.count()
@@ -652,14 +652,14 @@ workflow {
         pe_runs_ch.map { items ->
             def (sample_name, run_name, fwd_fastq_file, rev_fastq_file, read_count_file) = items
             def read_count = extract_read_count(read_count_file)
-            tuple(sample_name, run_name, fwd_fastq_file, rev_fastq_file, read_count)
+            [sample_name, run_name, fwd_fastq_file, rev_fastq_file, read_count]
         }
     }
     def extract_read_counts_se = { se_runs_ch ->
         se_runs_ch.map { items ->
             def (sample_name, run_name, fastq_file, read_count_file) = items
             def read_count = extract_read_count(read_count_file)
-            tuple(sample_name, run_name, fastq_file, read_count)
+            [sample_name, run_name, fastq_file, read_count]
         }
     }
 
@@ -734,10 +734,10 @@ workflow {
             def after_host_removal_read_count = items[10]
             
             return [
-                tuple(sample_name, run_name, fwd_fastq_file, "1",
-                raw_read_count, after_fastp_read_count, after_host_removal_read_count),
-                tuple(sample_name, run_name, rev_fastq_file, "2",
-                raw_read_count, after_fastp_read_count, after_host_removal_read_count)
+                [sample_name, run_name, fwd_fastq_file, "1",
+                raw_read_count, after_fastp_read_count, after_host_removal_read_count],
+                [sample_name, run_name, rev_fastq_file, "2",
+                raw_read_count, after_fastp_read_count, after_host_removal_read_count]
             ]
         }
     
@@ -752,8 +752,8 @@ workflow {
             def after_fastp_read_count = items[5]
             def after_host_removal_read_count = items[7]
 
-            tuple(sample_name, run_name, fastq_file, "single",
-            raw_read_count, after_fastp_read_count, after_host_removal_read_count)
+            [sample_name, run_name, fastq_file, "single",
+            raw_read_count, after_fastp_read_count, after_host_removal_read_count]
     }
      
     combined_read_counts_ch = combined_read_counts_pe_ch.mix(combined_read_counts_se_ch)
