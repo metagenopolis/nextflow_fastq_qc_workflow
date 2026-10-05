@@ -190,7 +190,7 @@ if (!params.skip_host_removal) {
     host_index = "${host_index_dir}/fasta/${host_genome}_dnaspace_index"
 }
 
-process fastp_pe {
+process FASTP_PE {
     tag "sample: $sample_name run: $run_name"
 
     cpus 8
@@ -238,7 +238,7 @@ process fastp_pe {
     """
 }
 
-process fastp_se {
+process FASTP_SE {
     tag "sample: $sample_name run: $run_name"
 
     cpus 8
@@ -280,7 +280,7 @@ process fastp_se {
 }
 
 
-process host_removal_pe {
+process HOST_REMOVAL_PE {
     tag "sample: $sample_name run: $run_name"
 
     cpus 8
@@ -366,7 +366,7 @@ process host_removal_pe {
     """
 }
 
-process host_removal_se {
+process HOST_REMOVAL_SE {
     tag "sample: $sample_name run: $run_name"
 
     cpus 8
@@ -439,7 +439,7 @@ process host_removal_se {
     """
 }
 
-process create_ini_json_files {
+process CREATE_INI_JSON_FILES {
     tag "sample: $sample_name run: $run_name tag: $tag"
 
     cpus 4
@@ -496,12 +496,12 @@ process create_ini_json_files {
 }
 
 
-include { validate_pe_runs as validate_raw_pe_runs } from './include/validate_runs.nf'
-include { validate_se_runs as validate_raw_se_runs } from './include/validate_runs.nf'
-include { validate_pe_runs as validate_after_fastp_pe_runs } from './include/validate_runs.nf'
-include { validate_se_runs as validate_after_fastp_se_runs } from '././include/validate_runs.nf'
-include { validate_pe_runs as validate_after_host_removal_pe_runs } from './include/validate_runs.nf'
-include { validate_se_runs as validate_after_host_removal_se_runs } from './include/validate_runs.nf'
+include { VALIDATE_PE_RUNS as VALIDATE_RAW_PE_RUNS } from './include/validate_runs.nf'
+include { VALIDATE_SE_RUNS as VALIDATE_RAW_SE_RUNS } from './include/validate_runs.nf'
+include { VALIDATE_PE_RUNS as VALIDATE_AFTER_FASTP_PE_RUNS } from './include/validate_runs.nf'
+include { VALIDATE_SE_RUNS as VALIDATE_AFTER_FASTP_SE_RUNS } from '././include/validate_runs.nf'
+include { VALIDATE_PE_RUNS as VALIDATE_AFTER_HOST_REMOVAL_PE_RUNS } from './include/validate_runs.nf'
+include { VALIDATE_SE_RUNS as VALIDATE_AFTER_HOST_REMOVAL_SE_RUNS } from './include/validate_runs.nf'
 
 workflow {
     def sample_dirs_ch = params.sample_list \
@@ -665,28 +665,28 @@ workflow {
     }
 
     // Check integrity of raw paired FASTQ files
-    validated_raw_pe_runs_ch = validate_raw_pe_runs(raw_runs_ch.paired_end)
+    validated_raw_pe_runs_ch = VALIDATE_RAW_PE_RUNS(raw_runs_ch.paired_end)
     raw_read_counts_pe_ch = extract_read_counts_pe(validated_raw_pe_runs_ch)
     validated_raw_pe_runs_ch = validated_raw_pe_runs_ch.map { items -> items[0..-2] }
     
     // Check integrity of raw single FASTQ files
-    validated_raw_se_runs_ch = validate_raw_se_runs(raw_runs_ch.single_end)
+    validated_raw_se_runs_ch = VALIDATE_RAW_SE_RUNS(raw_runs_ch.single_end)
     raw_read_counts_se_ch = extract_read_counts_se(validated_raw_se_runs_ch)
     validated_raw_se_runs_ch = validated_raw_se_runs_ch.map { items -> items[0..-2] }
    
     if (!params.skip_fastp) {
         // Run fastp on raw paired FASTQ files
-        after_fastp_pe_runs_ch = fastp_pe(validated_raw_pe_runs_ch).fastq_files
+        after_fastp_pe_runs_ch = FASTP_PE(validated_raw_pe_runs_ch).fastq_files
         // Run fastp on raw single FASTQ files
-        after_fastp_se_runs_ch = fastp_se(validated_raw_se_runs_ch).fastq_file
+        after_fastp_se_runs_ch = FASTP_SE(validated_raw_se_runs_ch).fastq_file
 
         // Check integrity of paired FASTQ files after fastp
-        after_fastp_validated_pe_runs_ch = validate_after_fastp_pe_runs(after_fastp_pe_runs_ch)
+        after_fastp_validated_pe_runs_ch = VALIDATE_AFTER_FASTP_PE_RUNS(after_fastp_pe_runs_ch)
         after_fastp_read_counts_pe_ch = extract_read_counts_pe(after_fastp_validated_pe_runs_ch)
         after_fastp_validated_pe_runs_ch = after_fastp_validated_pe_runs_ch.map { items -> items[0..-2] }
 
         // Check integrity of single FASTQ files after fastp
-        after_fastp_validated_se_runs_ch = validate_after_fastp_se_runs(after_fastp_se_runs_ch)
+        after_fastp_validated_se_runs_ch = VALIDATE_AFTER_FASTP_SE_RUNS(after_fastp_se_runs_ch)
         after_fastp_read_counts_se_ch = extract_read_counts_se(after_fastp_validated_se_runs_ch)
         after_fastp_validated_se_runs_ch = after_fastp_validated_se_runs_ch.map { items -> items[0..-2] }
     } else {
@@ -701,17 +701,17 @@ workflow {
     if (!params.skip_host_removal) {
         log.info "Selected reference genome for host ${params.host}: ${host_genome}"
         // Discard reads that map to the host genome in paired FASTQ files
-        after_host_removal_pe_runs_ch = host_removal_pe(after_fastp_validated_pe_runs_ch)
+        after_host_removal_pe_runs_ch = HOST_REMOVAL_PE(after_fastp_validated_pe_runs_ch)
         // Discard reads that map to the host genome in single FASTQ files
-        after_host_removal_se_runs_ch = host_removal_se(after_fastp_validated_se_runs_ch)
+        after_host_removal_se_runs_ch = HOST_REMOVAL_SE(after_fastp_validated_se_runs_ch)
 
         // Check integrity of paired FASTQ files after host removal
-        after_host_removal_validated_pe_runs_ch =  validate_after_host_removal_pe_runs(after_host_removal_pe_runs_ch.fastq_files)
+        after_host_removal_validated_pe_runs_ch =  VALIDATE_AFTER_HOST_REMOVAL_PE_RUNS(after_host_removal_pe_runs_ch.fastq_files)
         after_host_removal_read_counts_pe_ch = extract_read_counts_pe(after_host_removal_validated_pe_runs_ch)
         after_host_removal_validated_pe_runs_ch = after_host_removal_validated_pe_runs_ch.map { items -> items[0..-2] }
 
         // Check integrity of single FASTQ files after host removal
-        after_host_removal_validated_se_runs_ch =  validate_after_host_removal_se_runs(after_host_removal_se_runs_ch.fastq_file)
+        after_host_removal_validated_se_runs_ch =  VALIDATE_AFTER_HOST_REMOVAL_SE_RUNS(after_host_removal_se_runs_ch.fastq_file)
         after_host_removal_read_counts_se_ch = extract_read_counts_se(after_host_removal_validated_se_runs_ch)
         after_host_removal_validated_se_runs_ch = after_host_removal_validated_se_runs_ch.map { items -> items[0..-2] }
     } else {
@@ -759,7 +759,7 @@ workflow {
      
     combined_read_counts_ch = combined_read_counts_pe_ch.mix(combined_read_counts_se_ch)
 
-    create_ini_json_files(combined_read_counts_ch)
+    CREATE_INI_JSON_FILES(combined_read_counts_ch)
 }
 
 workflow.onComplete {

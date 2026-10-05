@@ -1,4 +1,4 @@
-process validate_pe_runs {
+process VALIDATE_PE_RUNS {
     tag "sample: $sample_name run: $run_name"
 
     cpus 4
@@ -53,7 +53,7 @@ process validate_pe_runs {
     """
 }
 
-process validate_se_runs {
+process VALIDATE_SE_RUNS {
     tag "sample: $sample_name run: $run_name"
 
     cpus 4
