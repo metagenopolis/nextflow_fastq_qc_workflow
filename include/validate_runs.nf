@@ -7,7 +7,9 @@ process VALIDATE_PE_RUNS {
     errorStrategy 'retry'
     maxRetries 1
 
-    publishDir "${params.output_dir}/${sample_name}", mode: 'copy', pattern: "*${params.fastq_ext}", enabled: params.skip_host_removal
+    // Publish only when nothing runs after this validation, i.e. when both fastp
+    // and host removal are skipped. Otherwise the last stage that runs publishes.
+    publishDir "${params.output_dir}", mode: 'copy', pattern: "*${params.fastq_ext}", enabled: params.skip_host_removal && params.skip_fastp, saveAs: { file_name -> "${sample_name}/${file_name}" }
 
     beforeScript 'source /usr/share/modules/init/bash'
     module 'seqtk/1.4'
@@ -62,7 +64,9 @@ process VALIDATE_SE_RUNS {
     errorStrategy 'retry'
     maxRetries 1
 
-    publishDir "${params.output_dir}/${sample_name}", mode: 'copy', pattern: "*${params.fastq_ext}", enabled: params.skip_host_removal
+    // Publish only when nothing runs after this validation, i.e. when both fastp
+    // and host removal are skipped. Otherwise the last stage that runs publishes.
+    publishDir "${params.output_dir}", mode: 'copy', pattern: "*${params.fastq_ext}", enabled: params.skip_host_removal && params.skip_fastp, saveAs: { file_name -> "${sample_name}/${file_name}" }
 
     beforeScript 'source /usr/share/modules/init/bash'
     module 'seqtk/1.4'
