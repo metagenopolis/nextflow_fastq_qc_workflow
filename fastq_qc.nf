@@ -762,7 +762,9 @@ def write_workflow_summary() {
     def metadata = [
         workflow: [
             name: workflow.scriptName,
-            version: "git describe --tags".execute().text.trim()
+            // -C makes git describe the repository holding the workflow, not the
+            // one the run happens to be launched from.
+            version: ['git', '-C', "${projectDir}", 'describe', '--tags'].execute().text.trim()
         ],
         execution_info: [
             username: System.getProperty("user.name"),
