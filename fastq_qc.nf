@@ -723,21 +723,13 @@ def extract_read_count(read_count_file) {
 }
 
 
-// Replace the read count file of each run by the read count it holds.
-def extract_read_counts_pe(pe_runs_ch) {
-    pe_runs_ch.map { items ->
-        def (sample_name, run_name, fwd_fastq_file, rev_fastq_file, read_count_file) = items
-        def read_count = extract_read_count(read_count_file)
-        [sample_name, run_name, fwd_fastq_file, rev_fastq_file, read_count]
-    }
-}
-
-
-def extract_read_counts_se(se_runs_ch) {
-    se_runs_ch.map { items ->
-        def (sample_name, run_name, fastq_file, read_count_file) = items
-        def read_count = extract_read_count(read_count_file)
-        [sample_name, run_name, fastq_file, read_count]
+// Keep only what identifies a run and the number of reads it holds. The
+// validation processes always emit the read count file last, whether the run is
+// paired-end or single-end, so the same mapping serves both.
+def extract_read_counts(runs_ch) {
+    runs_ch.map { items ->
+        def (sample_name, run_name) = items
+        [sample_name, run_name, extract_read_count(items.last())]
     }
 }
 
@@ -857,12 +849,12 @@ workflow {
 
     // Check integrity of raw paired FASTQ files
     validated_raw_pe_runs_ch = VALIDATE_RAW_PE_RUNS(raw_pe_runs_ch)
-    raw_read_counts_pe_ch = extract_read_counts_pe(validated_raw_pe_runs_ch)
+    raw_read_counts_pe_ch = extract_read_counts(validated_raw_pe_runs_ch)
     validated_raw_pe_runs_ch = validated_raw_pe_runs_ch.map { items -> items[0..-2] }
     
     // Check integrity of raw single FASTQ files
     validated_raw_se_runs_ch = VALIDATE_RAW_SE_RUNS(raw_se_runs_ch)
-    raw_read_counts_se_ch = extract_read_counts_se(validated_raw_se_runs_ch)
+    raw_read_counts_se_ch = extract_read_counts(validated_raw_se_runs_ch)
     validated_raw_se_runs_ch = validated_raw_se_runs_ch.map { items -> items[0..-2] }
    
     if (!params.skip_fastp) {
@@ -873,12 +865,12 @@ workflow {
 
         // Check integrity of paired FASTQ files after fastp
         after_fastp_validated_pe_runs_ch = VALIDATE_AFTER_FASTP_PE_RUNS(after_fastp_pe_runs_ch)
-        after_fastp_read_counts_pe_ch = extract_read_counts_pe(after_fastp_validated_pe_runs_ch)
+        after_fastp_read_counts_pe_ch = extract_read_counts(after_fastp_validated_pe_runs_ch)
         after_fastp_validated_pe_runs_ch = after_fastp_validated_pe_runs_ch.map { items -> items[0..-2] }
 
         // Check integrity of single FASTQ files after fastp
         after_fastp_validated_se_runs_ch = VALIDATE_AFTER_FASTP_SE_RUNS(after_fastp_se_runs_ch)
-        after_fastp_read_counts_se_ch = extract_read_counts_se(after_fastp_validated_se_runs_ch)
+        after_fastp_read_counts_se_ch = extract_read_counts(after_fastp_validated_se_runs_ch)
         after_fastp_validated_se_runs_ch = after_fastp_validated_se_runs_ch.map { items -> items[0..-2] }
     } else {
         after_fastp_validated_pe_runs_ch = validated_raw_pe_runs_ch
@@ -898,55 +890,50 @@ workflow {
 
         // Check integrity of paired FASTQ files after host removal
         after_host_removal_validated_pe_runs_ch =  VALIDATE_AFTER_HOST_REMOVAL_PE_RUNS(after_host_removal_pe_runs_ch.fastq_files)
-        after_host_removal_read_counts_pe_ch = extract_read_counts_pe(after_host_removal_validated_pe_runs_ch)
+        after_host_removal_read_counts_pe_ch = extract_read_counts(after_host_removal_validated_pe_runs_ch)
         after_host_removal_validated_pe_runs_ch = after_host_removal_validated_pe_runs_ch.map { items -> items[0..-2] }
 
         // Check integrity of single FASTQ files after host removal
         after_host_removal_validated_se_runs_ch =  VALIDATE_AFTER_HOST_REMOVAL_SE_RUNS(after_host_removal_se_runs_ch.fastq_file)
-        after_host_removal_read_counts_se_ch = extract_read_counts_se(after_host_removal_validated_se_runs_ch)
+        after_host_removal_read_counts_se_ch = extract_read_counts(after_host_removal_validated_se_runs_ch)
         after_host_removal_validated_se_runs_ch = after_host_removal_validated_se_runs_ch.map { items -> items[0..-2] }
     } else {
+        after_host_removal_validated_pe_runs_ch = after_fastp_validated_pe_runs_ch
         after_host_removal_read_counts_pe_ch = after_fastp_read_counts_pe_ch
+
+        after_host_removal_validated_se_runs_ch = after_fastp_validated_se_runs_ch
         after_host_removal_read_counts_se_ch = after_fastp_read_counts_se_ch
     }
     // Create a channel that indicates for each FASTQ file
     // 1. the number of raw reads
     // 2. the number of reads after fastp
     // 3. the number of reads after fastp and host removal
-    combined_read_counts_pe_ch = raw_read_counts_pe_ch
-        .join(after_fastp_read_counts_pe_ch, by: [0,1])
-        .join(after_host_removal_read_counts_pe_ch, by: [0,1])
-        .flatMap { items -> 
-            def sample_name = items[0]
-            def run_name = items[1]
-            def fwd_fastq_file = items[8]
-            def rev_fastq_file = items[9]
-            def raw_read_count = items[4]
-            def after_fastp_read_count = items[7]
-            def after_host_removal_read_count = items[10]
-            
-            return [
+    // The FASTQ files come from the last stage that ran, the read counts from each
+    // stage. Every joined channel holds [sample_name, run_name] followed by a single
+    // value, so the result is destructured by name instead of by position.
+    combined_read_counts_pe_ch = after_host_removal_validated_pe_runs_ch
+        .join(raw_read_counts_pe_ch, by: [0, 1])
+        .join(after_fastp_read_counts_pe_ch, by: [0, 1])
+        .join(after_host_removal_read_counts_pe_ch, by: [0, 1])
+        .flatMap { sample_name, run_name, fwd_fastq_file, rev_fastq_file,
+                   raw_read_count, after_fastp_read_count, after_host_removal_read_count ->
+            [
                 [sample_name, run_name, fwd_fastq_file, "1",
                 raw_read_count, after_fastp_read_count, after_host_removal_read_count],
                 [sample_name, run_name, rev_fastq_file, "2",
                 raw_read_count, after_fastp_read_count, after_host_removal_read_count]
             ]
         }
-    
-    combined_read_counts_se_ch = raw_read_counts_se_ch
-        .join(after_fastp_read_counts_se_ch, by: [0,1])
-        .join(after_host_removal_read_counts_se_ch, by: [0,1])
-        .map { items ->
-            def sample_name = items[0]
-            def run_name = items[1]
-            def fastq_file = items[6]
-            def raw_read_count = items[3]
-            def after_fastp_read_count = items[5]
-            def after_host_removal_read_count = items[7]
 
+    combined_read_counts_se_ch = after_host_removal_validated_se_runs_ch
+        .join(raw_read_counts_se_ch, by: [0, 1])
+        .join(after_fastp_read_counts_se_ch, by: [0, 1])
+        .join(after_host_removal_read_counts_se_ch, by: [0, 1])
+        .map { sample_name, run_name, fastq_file,
+               raw_read_count, after_fastp_read_count, after_host_removal_read_count ->
             [sample_name, run_name, fastq_file, "single",
             raw_read_count, after_fastp_read_count, after_host_removal_read_count]
-    }
+        }
      
     combined_read_counts_ch = combined_read_counts_pe_ch.mix(combined_read_counts_se_ch)
 
