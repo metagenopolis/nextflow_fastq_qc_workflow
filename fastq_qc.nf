@@ -541,12 +541,157 @@ include { VALIDATE_SE_RUNS as VALIDATE_AFTER_FASTP_SE_RUNS } from '././include/v
 include { VALIDATE_PE_RUNS as VALIDATE_AFTER_HOST_REMOVAL_PE_RUNS } from './include/validate_runs.nf'
 include { VALIDATE_SE_RUNS as VALIDATE_AFTER_HOST_REMOVAL_SE_RUNS } from './include/validate_runs.nf'
 
-// Extract the run name from a FASTQ file name.
-def extract_run_name(fastq_file_name) {
-    fastq_file_name
-        .replaceAll("${params.fwd_suffix}${params.fastq_ext}\$", "")
-        .replaceAll("${params.rev_suffix}${params.fastq_ext}\$", "")
-        .replaceAll("${params.fastq_ext}\$", "")
+// Remove `suffix` from the end of `name`. Only ever called on a name already
+// known to end with the suffix, so a plain substring is exact.
+def strip_suffix(String name, String suffix) {
+    name.substring(0, name.length() - suffix.length())
+}
+
+
+// Return the sample directories to process, either read from the sample list
+// file or discovered as the subdirectories of the input directory.
+def resolve_sample_dirs() {
+    def input_dir = file(params.input_dir)
+
+    if (!input_dir.isDirectory()) {
+        error "Input directory does not exist, or is not a directory: ${input_dir}"
+    }
+
+    if (params.sample_list) {
+        def sample_names = file(params.sample_list).readLines()
+            .collect { line -> line.trim() }
+            .findAll { line -> line && !line.startsWith('#') }
+
+        if (!sample_names) {
+            error "No sample name found in ${params.sample_list}"
+        }
+
+        return sample_names.collect { sample_name -> file("${input_dir}/${sample_name}") }
+    }
+
+    // listFiles() does not descend into a symlink to a directory, it returns the
+    // link itself, so always list the target the link resolves to.
+    def sample_dirs = file(input_dir.toRealPath()).listFiles()
+        .findAll { entry -> entry.isDirectory() && !entry.name.startsWith('.') }
+        .sort()
+
+    if (!sample_dirs) {
+        error "No sample directory found in ${input_dir}"
+    }
+
+    return sample_dirs
+}
+
+
+// Scan every sample directory and group its FASTQ files by run. Every problem
+// found is collected so that a broken input is reported in full, in one go,
+// before any task is launched.
+def parse_runs() {
+    def fwd_suffix = "${params.fwd_suffix}${params.fastq_ext}"
+    def rev_suffix = "${params.rev_suffix}${params.fastq_ext}"
+
+    def pe_runs  = []
+    def se_runs  = []
+    def problems = []
+
+    resolve_sample_dirs()
+        .each { sample_dir ->
+            def sample_name = sample_dir.getName()
+
+            // Collect this as a problem rather than letting listFiles() throw,
+            // so that a stale path does not hide the other samples' problems.
+            if (!sample_dir.isDirectory()) {
+                problems << (params.sample_list
+                    ? "Sample '${sample_name}' (from ${params.sample_list}) " +
+                      "was not found in input directory ${params.input_dir}"
+                    : "Sample directory does not exist, or is not a directory:\n" +
+                      "  - ${sample_dir}")
+                return
+            }
+
+            // Index the FASTQ files by run name, i.e. the file name with its mate
+            // suffix removed, so that mates are matched by name rather than by
+            // position in two independently sorted lists.
+            def fwd_by_run = [:]
+            def rev_by_run = [:]
+            def se_by_run  = [:]
+
+            // A symlinked sample directory has to be listed through its target, but
+            // the sample keeps the name it was given here rather than the target's.
+            file(sample_dir.toRealPath()).listFiles().each { fastq_file ->
+                if (fastq_file.name.endsWith(fwd_suffix)) {
+                    fwd_by_run[strip_suffix(fastq_file.name, fwd_suffix)] = fastq_file
+                }
+                else if (fastq_file.name.endsWith(rev_suffix)) {
+                    rev_by_run[strip_suffix(fastq_file.name, rev_suffix)] = fastq_file
+                }
+                else if (fastq_file.name.endsWith(params.fastq_ext)) {
+                    se_by_run[strip_suffix(fastq_file.name, params.fastq_ext)] = fastq_file
+                }
+            }
+
+            def run_names = (fwd_by_run.keySet() + rev_by_run.keySet() + se_by_run.keySet()).sort()
+
+            if (!run_names) {
+                problems << "No FASTQ files found in directory ${sample_dir}\n" +
+                    "Check that your FASTQ file extension matches the value of --fastq_ext " +
+                    "(currently '${params.fastq_ext}')"
+                return
+            }
+
+            // A run is paired-end as soon as one mate suffix matched, and it then
+            // owes both mates. The two layouts cannot be mixed within a run.
+            def mixed = run_names.findAll { run_name ->
+                (fwd_by_run[run_name] || rev_by_run[run_name]) && se_by_run[run_name]
+            }
+
+            def orphans = run_names.findAll { run_name ->
+                !se_by_run[run_name] && (!fwd_by_run[run_name] || !rev_by_run[run_name])
+            }
+
+            def sample_problems = []
+
+            if (mixed) {
+                sample_problems << "Paired-end and single-end FASTQ files for the same run " +
+                    "of sample '${sample_name}':\n" +
+                    mixed.collect { run_name ->
+                        def fastq_files = [fwd_by_run[run_name], rev_by_run[run_name], se_by_run[run_name]]
+                        "  - run '${run_name}': " +
+                            fastq_files.findAll().collect { fastq_file -> fastq_file.name }.join(', ')
+                    }.join("\n") + "\n" +
+                    "If you expected only paired-end data, please check the --fwd_suffix and --rev_suffix parameters."
+            }
+
+            if (orphans) {
+                sample_problems << "Unpaired FASTQ files for sample '${sample_name}':\n" +
+                    orphans.collect { run_name ->
+                        def present = fwd_by_run[run_name] ?: rev_by_run[run_name]
+                        def missing = fwd_by_run[run_name] ? rev_suffix : fwd_suffix
+                        "  - ${present.name} has no mate (expected ${run_name}${missing})"
+                    }.join("\n")
+            }
+
+            if (sample_problems) {
+                problems << sample_problems.join("\n\n")
+                return
+            }
+
+            run_names.each { run_name ->
+                if (se_by_run[run_name]) {
+                    se_runs << [sample_name, run_name, se_by_run[run_name]]
+                }
+                else {
+                    pe_runs << [sample_name, run_name, fwd_by_run[run_name], rev_by_run[run_name]]
+                }
+            }
+        }
+
+    if (problems) {
+        error("Found ${problems.size()} invalid sample(s) in '${params.sample_list ?: params.input_dir}':\n\n" +
+            problems.join("\n\n"))
+    }
+
+    return [paired_end: pe_runs, single_end: se_runs]
 }
 
 
@@ -651,147 +796,32 @@ workflow {
 
     validate_params()
 
-    def sample_dirs_ch = params.sample_list \
-        ? channel // If sample_list is provided, grab samples from list
-            .fromPath(params.sample_list)
-            .splitText()
-            .map { line ->
-                def sample_name = line.trim()
-                def sample_dir = file("${params.input_dir}/${sample_name}")
+    def runs = parse_runs()
 
-                if (!sample_dir.isDirectory()) {
-                      error "Sample '${sample_name}' (from ${params.sample_list}) " +
-                      "was not found in input directory ${params.input_dir}"
-                }
+    def sample_names = (runs.paired_end + runs.single_end).collect { run -> run[0] }.unique()
+    def pe_run_count = runs.paired_end.size()
+    def se_run_count = runs.single_end.size()
 
-                return sample_dir
-            }
-        : channel // If sample_list is not provided, use all subdirectories
-            .fromPath("${params.input_dir}/*", type: 'dir')
+    log.info "Found ${sample_names.size()} sample${sample_names.size() == 1 ? '' : 's'}"
+    log.info "Found ${pe_run_count} paired-end run${pe_run_count == 1 ? '' : 's'}"
+    log.info "Found ${se_run_count} single-end run${se_run_count == 1 ? '' : 's'}"
 
-    def sample_count_ch = sample_dirs_ch.count()
-    sample_count_ch
-    .subscribe { sample_count ->
-        log.info "Found ${sample_count} sample${sample_count > 1 ? 's' : ''}"
+    if (pe_run_count == 0) {
+        log.warn "No paired-end runs found."
+        log.warn "If you expected paired-end data, please check the --fwd_suffix and --rev_suffix parameters"
     }
 
-    raw_runs_ch = sample_dirs_ch
-        .flatMap { sample_dir ->
+    def raw_pe_runs_ch = channel.fromList(runs.paired_end)
+    def raw_se_runs_ch = channel.fromList(runs.single_end)
 
-            def sample_name = sample_dir.getName()
-
-            def all_fastq_files = sample_dir.listFiles().findAll { fastq_file ->
-                fastq_file.name.endsWith(params.fastq_ext)
-            }.sort()
-
-            if (all_fastq_files.isEmpty()) {
-                error "No FASTQ files found in directory ${sample_dir}\n" +
-                "Check that your FASTQ file extension matches the value of --fastq_ext (currently '${params.fastq_ext}')"
-            }
-
-            def fwd_fastq_files = all_fastq_files.findAll { fastq_file -> fastq_file.name.endsWith("${params.fwd_suffix}${params.fastq_ext}") }
-            def rev_fastq_files = all_fastq_files.findAll { fastq_file -> fastq_file.name.endsWith("${params.rev_suffix}${params.fastq_ext}") }
-            def se_fastq_files  = all_fastq_files.findAll { fastq_file ->
-                !fastq_file.name.endsWith("${params.fwd_suffix}${params.fastq_ext}") &&
-                !fastq_file.name.endsWith("${params.rev_suffix}${params.fastq_ext}")
-            }
-
-            // Group by run name
-            def runs = [:].withDefault { [fwd: null, rev: null, se: null] }
-
-            fwd_fastq_files.each { fastq_file ->
-                def run_name = extract_run_name(fastq_file.name)
-                runs[run_name].fwd = fastq_file
-            }
-
-            rev_fastq_files.each { fastq_file ->
-                def run_name = extract_run_name(fastq_file.name)
-                runs[run_name].rev= fastq_file
-            }
-
-            se_fastq_files.each { fastq_file ->
-                def run_name = extract_run_name(fastq_file.name)
-                runs[run_name].se = fastq_file
-            }
-
-            // ----------------------------------------------------------
-            // Produce one entry per run
-            // ----------------------------------------------------------
-            return runs.collect { run_name, run_fastq_files ->
-                boolean has_pe = (run_fastq_files.fwd != null || run_fastq_files.rev != null)
-                boolean has_se = run_fastq_files.se != null
-
-                // PE run
-                if (has_pe && !has_se) {
-                    if (run_fastq_files.rev == null) {
-                        error "Paired-end mismatch in sample '${sample_name}', run '${run_name}'\n" +
-                        " Found forward file ${run_fastq_files.fwd.name} but not reverse file."
-                    } else if (run_fastq_files.fwd == null) {
-                        error "Paired-end mismatch in sample '${sample_name}', run '${run_name}'\n" +
-                        " Found reverse file ${run_fastq_files.rev.name} but not forward file."
-                    }
-
-                    return [
-                        sample_name,
-                        run_name,
-                        'paired_end',
-                        run_fastq_files.fwd,
-                        run_fastq_files.rev
-                    ]
-                }
-                // SE run
-                else if (has_se && !has_pe) {
-                    return [
-                        sample_name,
-                        run_name,
-                        'single_end',
-                        run_fastq_files.se,
-                        null
-                    ]
-                }
-                // Mixed run (error)
-                else if (has_pe && has_se) {
-                    throw new RuntimeException(
-                        "Run '${run_name}' of sample '${sample_name}' contains both PE and SE reads."
-                    )
-                }
-            }
-        }
-    
-    // ------------------------------------------------------------
-    // Split channels
-    // ------------------------------------------------------------
-    raw_runs_ch = raw_runs_ch
-        .branch { sample_name, run_name, library_layout, fwd_fastq_file, rev_fastq_file ->
-            paired_end: library_layout == 'paired_end'
-                return [sample_name, run_name, fwd_fastq_file, rev_fastq_file]
-
-            single_end: library_layout == 'single_end'
-                return [sample_name, run_name, fwd_fastq_file]
-    }
-
-    def pe_run_count_ch = raw_runs_ch.paired_end.count()
-    def se_run_count_ch = raw_runs_ch.single_end.count()
-    pe_run_count_ch
-    .combine(se_run_count_ch)
-    .subscribe { pe_run_count, se_run_count ->
-        log.info "Found ${pe_run_count} paired-end run${pe_run_count > 1 ? 's' : ''}"
-        log.info "Found ${se_run_count} single-end run${se_run_count > 1 ? 's' : ''}"
-
-        if (pe_run_count == 0)
-        {
-            log.warn "No paired-end runs found."
-            log.warn "If you expected paired-end data, please check the --fwd_suffix and --rev_suffix parameters"
-        }
-    }
 
     // Check integrity of raw paired FASTQ files
-    validated_raw_pe_runs_ch = VALIDATE_RAW_PE_RUNS(raw_runs_ch.paired_end)
+    validated_raw_pe_runs_ch = VALIDATE_RAW_PE_RUNS(raw_pe_runs_ch)
     raw_read_counts_pe_ch = extract_read_counts_pe(validated_raw_pe_runs_ch)
     validated_raw_pe_runs_ch = validated_raw_pe_runs_ch.map { items -> items[0..-2] }
     
     // Check integrity of raw single FASTQ files
-    validated_raw_se_runs_ch = VALIDATE_RAW_SE_RUNS(raw_runs_ch.single_end)
+    validated_raw_se_runs_ch = VALIDATE_RAW_SE_RUNS(raw_se_runs_ch)
     raw_read_counts_se_ch = extract_read_counts_se(validated_raw_se_runs_ch)
     validated_raw_se_runs_ch = validated_raw_se_runs_ch.map { items -> items[0..-2] }
    
