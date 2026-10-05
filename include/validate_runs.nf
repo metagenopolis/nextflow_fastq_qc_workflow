@@ -7,17 +7,17 @@ process VALIDATE_PE_RUNS {
     errorStrategy 'retry'
     maxRetries 1
 
+    publishDir "${params.output_dir}/${sample_name}", mode: 'copy', pattern: "*${params.fastq_ext}", enabled: params.skip_host_removal
+
+    beforeScript 'source /usr/share/modules/init/bash'
+    module 'seqtk/1.4'
+
     input:
     tuple val(sample_name), val(run_name), path(fwd_fastq_file), path(rev_fastq_file)
 
     output:
     tuple val(sample_name), val(run_name), path(fwd_fastq_file), path(rev_fastq_file),
     file("${run_name}.read_count.tsv")
-
-    publishDir "${params.output_dir}/${sample_name}", mode: 'copy', pattern: "*${params.fastq_ext}", enabled: params.skip_host_removal
-
-    beforeScript 'source /usr/share/modules/init/bash'
-    module 'seqtk/1.4'
 
     script:
     """
@@ -62,15 +62,15 @@ process VALIDATE_SE_RUNS {
     errorStrategy 'retry'
     maxRetries 1
 
+    beforeScript 'source /usr/share/modules/init/bash'
+    module 'seqtk/1.4'
+
     input:
     tuple val(sample_name), val(run_name), path(fastq_file)
 
     output:
     tuple val(sample_name), val(run_name), path(fastq_file),
     file("${run_name}.read_count.tsv")
-
-    beforeScript 'source /usr/share/modules/init/bash'
-    module 'seqtk/1.4'
 
     script:
     """

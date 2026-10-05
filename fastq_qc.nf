@@ -204,6 +204,12 @@ process FASTP_PE {
     errorStrategy 'retry'
     maxRetries 1
 
+    publishDir "${params.output_dir}", mode: 'copy', pattern: "${sample_name}/*.fastp_report.{html,json}"
+    publishDir "${params.output_dir}", mode: 'copy', pattern: "${sample_name}/*${params.fastq_ext}", enabled: params.skip_host_removal
+
+    beforeScript 'source /usr/share/modules/init/bash'
+    module "fastp/${params.fastp_version}"
+
     input:
     tuple val(sample_name), val(run_name), path(fwd_fastq_file), path(rev_fastq_file)
 
@@ -214,12 +220,6 @@ process FASTP_PE {
 
     tuple path("${sample_name}/${run_name}.fastp_report.json"),
     path("${sample_name}/${run_name}.fastp_report.html"), emit: fastp_reports
-
-    publishDir "${params.output_dir}", mode: 'copy', pattern: "${sample_name}/*.fastp_report.{html,json}"
-    publishDir "${params.output_dir}", mode: 'copy', pattern: "${sample_name}/*${params.fastq_ext}", enabled: params.skip_host_removal
-
-    beforeScript 'source /usr/share/modules/init/bash'
-    module "fastp/${params.fastp_version}"
 
     script:
     def fwd_adapter = selected_adapters ? " --adapter_sequence    ${selected_adapters.fwd}" : ""
@@ -252,6 +252,12 @@ process FASTP_SE {
     errorStrategy 'retry'
     maxRetries 1
 
+    publishDir "${params.output_dir}", mode: 'copy', pattern: "${sample_name}/*.fastp_report.{html,json}"
+    publishDir "${params.output_dir}", mode: 'copy', pattern: "${sample_name}/*${params.fastq_ext}", enabled: params.skip_host_removal
+
+    beforeScript 'source /usr/share/modules/init/bash'
+    module "fastp/${params.fastp_version}"
+
     input:
     tuple val(sample_name), val(run_name), path(fastq_file)
 
@@ -261,12 +267,6 @@ process FASTP_SE {
 
     tuple path("${sample_name}/${run_name}.fastp_report.json"),
     path("${sample_name}/${run_name}.fastp_report.html"), emit: fastp_reports
-
-    publishDir "${params.output_dir}", mode: 'copy', pattern: "${sample_name}/*.fastp_report.{html,json}"
-    publishDir "${params.output_dir}", mode: 'copy', pattern: "${sample_name}/*${params.fastq_ext}", enabled: params.skip_host_removal
-
-    beforeScript 'source /usr/share/modules/init/bash'
-    module "fastp/${params.fastp_version}"
 
     script:
     """
@@ -294,6 +294,12 @@ process HOST_REMOVAL_PE {
     errorStrategy 'retry'
     maxRetries 1
 
+    publishDir "${params.output_dir}", mode: 'copy'
+
+    beforeScript 'source /usr/share/modules/init/bash'
+    module "bowtie2/${params.bowtie2_version}"
+    module "samtools/${params.samtools_version}"
+
     input:
     tuple val(sample_name), val(run_name), path(fwd_fastq_file), path(rev_fastq_file)
 
@@ -305,12 +311,6 @@ process HOST_REMOVAL_PE {
     tuple path("${sample_name}/${params.host_subdir}/*${params.host_reads_suffix}${params.fwd_suffix}${params.fastq_ext}"),
     path("${sample_name}/${params.host_subdir}/*${params.host_reads_suffix}${params.rev_suffix}${params.fastq_ext}"),
     optional: !params.save_host_reads, emit: host_reads_fastq_file
-
-    publishDir "${params.output_dir}", mode: 'copy'
-
-    beforeScript 'source /usr/share/modules/init/bash'
-    module "bowtie2/${params.bowtie2_version}"
-    module "samtools/${params.samtools_version}"
 
     script:
     def host_reads_fwd_fastq_file =
@@ -380,6 +380,12 @@ process HOST_REMOVAL_SE {
     errorStrategy 'retry'
     maxRetries 1
 
+    publishDir "${params.output_dir}", mode: 'copy'
+
+    beforeScript 'source /usr/share/modules/init/bash'
+    module "bowtie2/${params.bowtie2_version}"
+    module "samtools/${params.samtools_version}"
+
     input:
     tuple val(sample_name), val(run_name), path(fastq_file)
 
@@ -389,12 +395,6 @@ process HOST_REMOVAL_SE {
 
     path("${sample_name}/${params.host_subdir}/*${params.host_reads_suffix}${params.fastq_ext}"),
     optional: !params.save_host_reads, emit: host_reads_fastq_file
-
-    publishDir "${params.output_dir}", mode: 'copy'
-
-    beforeScript 'source /usr/share/modules/init/bash'
-    module "bowtie2/${params.bowtie2_version}"
-    module "samtools/${params.samtools_version}"
 
     script:
     def host_reads_fastq_file =
@@ -453,6 +453,8 @@ process CREATE_INI_JSON_FILES {
     errorStrategy 'retry'
     maxRetries 1
 
+    publishDir "${params.output_dir}", mode: 'copy'
+
     input:
     tuple val(sample_name), val(run_name), path(fastq_file), val(tag),
     val(raw_read_count), val(after_fastp_read_count), val(after_host_removal_read_count)
@@ -460,8 +462,6 @@ process CREATE_INI_JSON_FILES {
     output:
     path("${sample_name}/*_census_stage_0.ini")
     path("${sample_name}/*_census_stage_0.json")
-
-    publishDir "${params.output_dir}", mode: 'copy'
 
     script:
     def full_sample_name = fastq_file.getName().replaceAll("${params.fastq_ext}\$", "")
