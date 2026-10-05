@@ -9,40 +9,10 @@ params.fwd_suffix = "_1"
 params.rev_suffix = "_2"
 params.n_base_limit = 0
 params.length_required = 60
-def available_adapters = [
-    'Illumina_TruSeq' : [
-        fwd: 'AGATCGGAAGAGCACACGTCTGAACTCCAGTCA',
-        rev: 'AGATCGGAAGAGCGTCGTGTAGGGAAAGAGTGT',
-        fastp_opts: '--trim_poly_g'
-    ],
-    'Illumina_Nextera' : [
-        fwd: 'CTGTCTCTTATACACATCTCCGAGCCCACGAGAC',
-        rev: 'CTGTCTCTTATACACATCTGACGCTGCCGACGA',
-        fastp_opts: '--trim_poly_g'
-    ],
-    'DNBseq' : [
-        fwd: 'AAGTCGGAGGCCAAGCGGTCTTAGGAAGACAA',
-        rev: 'AAGTCGGATCGTAGCCATGTCGTTCTGTGAGCCAAGGAGTTG',
-        fastp_opts: null
-    ]
-]
 params.adapters = null
 params.fastp_opts = ""
 
 params.skip_host_removal = false
-def available_hosts = [
-    'Homo_sapiens',
-    'Sus_scrofa',
-    'Mus_musculus',
-    'Rattus_norvegicus',
-    'Oryctolagus_cuniculus',
-    'Gallus_gallus',
-    'Bos_taurus',
-    'Canis_lupus_familiaris',
-    'Oncorhynchus_mykiss',
-    'Felis_catus',
-    'Equus_caballus'
-]
 params.host = null
 params.host_index_parent_dir = '/biodatabank/meteor-data/reference.ng'
 params.save_host_reads = false
@@ -53,7 +23,45 @@ params.sample_list = null
 params.project_name = null
 params.help = false
 
-def print_help(available_adapters, available_hosts) {
+def available_adapters() {
+    [
+        'Illumina_TruSeq' : [
+            fwd: 'AGATCGGAAGAGCACACGTCTGAACTCCAGTCA',
+            rev: 'AGATCGGAAGAGCGTCGTGTAGGGAAAGAGTGT',
+            fastp_opts: '--trim_poly_g'
+        ],
+        'Illumina_Nextera' : [
+            fwd: 'CTGTCTCTTATACACATCTCCGAGCCCACGAGAC',
+            rev: 'CTGTCTCTTATACACATCTGACGCTGCCGACGA',
+            fastp_opts: '--trim_poly_g'
+        ],
+        'DNBseq' : [
+            fwd: 'AAGTCGGAGGCCAAGCGGTCTTAGGAAGACAA',
+            rev: 'AAGTCGGATCGTAGCCATGTCGTTCTGTGAGCCAAGGAGTTG',
+            fastp_opts: null
+        ]
+    ]
+}
+
+
+def available_hosts() {
+    [
+        'Homo_sapiens',
+        'Sus_scrofa',
+        'Mus_musculus',
+        'Rattus_norvegicus',
+        'Oryctolagus_cuniculus',
+        'Gallus_gallus',
+        'Bos_taurus',
+        'Canis_lupus_familiaris',
+        'Oncorhynchus_mykiss',
+        'Felis_catus',
+        'Equus_caballus'
+    ]
+}
+
+
+def print_help() {
     log.info """
 USAGE:
     nextflow run ${workflow.scriptName} --input_dir INPUT_DIR --output_dir OUTPUT_DIR [...]
@@ -84,7 +92,7 @@ FASTP PARAMETERS:
                                       Default: ${params.skip_fastp}
 
     --adapters SEQUENCING_ADAPTERS    Name of sequencing adapters to be removed from raw reads
-                                      Supported adapters: ${available_adapters.keySet().join(', ')}
+                                      Supported adapters: ${available_adapters().keySet().join(', ')}
                                       Default: ${params.adapters}
 
     --n_base_limit N_BASE_LIMIT       Maximum number of undetermined bases (Ns) in a read
@@ -100,7 +108,7 @@ HOST REMOVAL PARAMETERS:
                                       Default: ${params.skip_host_removal}
 
     --host HOST                       Reads mapped to the HOST genome will be discarded
-                                      Supported hosts: ${available_hosts.join(', ')}
+                                      Supported hosts: ${available_hosts().join(', ')}
                                       Default: ${params.host}
 
     --save_host_reads                 Save host-derived reads to separate FASTQ files
@@ -147,7 +155,7 @@ EXAMPLE:
 
 
 if (params.help || !workflow.commandLine.contains('--')) {
-    print_help(available_adapters, available_hosts)
+    print_help()
     exit 0
 }
 
@@ -161,11 +169,11 @@ def project_name = !params.project_name ? file(params.input_dir).toAbsolutePath(
 def selected_adapters = null
 def fastp_opts = params.fastp_opts ?: ''
 if (!params.skip_fastp && params.adapters) {
-    if( !available_adapters.containsKey(params.adapters) ) {
+    if( !available_adapters().containsKey(params.adapters) ) {
         error "Unknown sequencing adapters: ${params.adapters}\n" +
-              "Supported adapters: ${available_adapters.keySet().join(', ')}"
+              "Supported adapters: ${available_adapters().keySet().join(', ')}"
     }
-    selected_adapters = available_adapters[params.adapters]
+    selected_adapters = available_adapters()[params.adapters]
     fastp_opts += " ${selected_adapters.fastp_opts}"
 }
 
@@ -178,9 +186,9 @@ if (!params.skip_host_removal) {
               "If you do not want to perform host removal, use --skip_host_removal"
     }
 
-    if (!available_hosts.contains(params.host) ) {
+    if (!available_hosts().contains(params.host) ) {
         error "Unknown host: ${params.host}\n" +
-            "Supported hosts: ${available_hosts.join(', ')}"
+            "Supported hosts: ${available_hosts().join(', ')}"
     }
     host_index_dir = new File("${params.host_index_parent_dir}/${params.host}_default").getCanonicalPath()
     host_genome = new File(host_index_dir).getName()
