@@ -720,6 +720,24 @@ def extract_read_counts_se(se_runs_ch) {
 }
 
 
+// Version of the workflow, as `git describe` reports it. The -C option makes git
+// describe the repository holding the workflow, not the one the run happens to be
+// launched from. Anything that stops git from answering, such as a copy that is not
+// a checkout or a checkout without any tag, is reported as an unknown version.
+def workflow_version() {
+    try {
+        def git = ['git', '-C', "${projectDir}", 'describe', '--tags'].execute()
+        def version = git.text.trim()
+        git.waitFor()
+
+        return git.exitValue() == 0 && version ? version : 'unknown'
+    }
+    catch (IOException e) {
+        return 'unknown'
+    }
+}
+
+
 // Write a JSON report describing the workflow execution.
 def write_workflow_summary() {
     def datetime_formatter = java.time.format.DateTimeFormatter.ISO_OFFSET_DATE_TIME
@@ -762,9 +780,7 @@ def write_workflow_summary() {
     def metadata = [
         workflow: [
             name: workflow.scriptName,
-            // -C makes git describe the repository holding the workflow, not the
-            // one the run happens to be launched from.
-            version: ['git', '-C', "${projectDir}", 'describe', '--tags'].execute().text.trim()
+            version: workflow_version()
         ],
         execution_info: [
             username: System.getProperty("user.name"),
