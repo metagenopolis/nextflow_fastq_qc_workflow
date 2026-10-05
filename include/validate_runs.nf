@@ -17,7 +17,7 @@ process VALIDATE_PE_RUNS {
 
     output:
     tuple val(sample_name), val(run_name), path(fwd_fastq_file), path(rev_fastq_file),
-    file("${run_name}.read_count.tsv")
+    path("${run_name}.read_count.tsv")
 
     script:
     """
@@ -72,7 +72,7 @@ process VALIDATE_SE_RUNS {
 
     output:
     tuple val(sample_name), val(run_name), path(fastq_file),
-    file("${run_name}.read_count.tsv")
+    path("${run_name}.read_count.tsv")
 
     script:
     """
