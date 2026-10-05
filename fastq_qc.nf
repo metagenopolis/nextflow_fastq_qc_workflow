@@ -1,6 +1,6 @@
-def fastp_version = '1.3.1'
-def bowtie2_version = '2.5.5'
-def samtools_version = '1.23.1'
+params.fastp_version = '1.3.1'
+params.bowtie2_version = '2.5.5'
+params.samtools_version = '1.23.1'
 
 
 params.skip_fastp = false
@@ -211,7 +211,7 @@ process FASTP_PE {
     publishDir "${params.output_dir}", mode: 'copy', pattern: "${sample_name}/*${params.fastq_ext}", enabled: params.skip_host_removal
 
     beforeScript 'source /usr/share/modules/init/bash'
-    module "fastp/${fastp_version}"
+    module "fastp/${params.fastp_version}"
 
     script:
     def fwd_adapter = selected_adapters ? " --adapter_sequence    ${selected_adapters.fwd}" : ""
@@ -258,7 +258,7 @@ process FASTP_SE {
     publishDir "${params.output_dir}", mode: 'copy', pattern: "${sample_name}/*${params.fastq_ext}", enabled: params.skip_host_removal
 
     beforeScript 'source /usr/share/modules/init/bash'
-    module "fastp/${fastp_version}"
+    module "fastp/${params.fastp_version}"
 
     script:
     """
@@ -301,8 +301,8 @@ process HOST_REMOVAL_PE {
     publishDir "${params.output_dir}", mode: 'copy'
 
     beforeScript 'source /usr/share/modules/init/bash'
-    module "bowtie2/${bowtie2_version}"
-    module "samtools/${samtools_version}"
+    module "bowtie2/${params.bowtie2_version}"
+    module "samtools/${params.samtools_version}"
 
     script:
     def host_reads_fwd_fastq_file =
@@ -385,8 +385,8 @@ process HOST_REMOVAL_SE {
     publishDir "${params.output_dir}", mode: 'copy'
 
     beforeScript 'source /usr/share/modules/init/bash'
-    module "bowtie2/${bowtie2_version}"
-    module "samtools/${samtools_version}"
+    module "bowtie2/${params.bowtie2_version}"
+    module "samtools/${params.samtools_version}"
 
     script:
     def host_reads_fastq_file =
@@ -771,7 +771,7 @@ workflow.onComplete {
 
     def fastp_params = [ skip_fastp: params.skip_fastp ]
     if (!params.skip_fastp) {
-        fastp_params['fastp_version'] = fastp_version
+        fastp_params['fastp_version'] = params.fastp_version
         fastp_params += params.subMap(['adapters', 'n_base_limit', 'length_required'])
         if (params.adapters)
         {
@@ -784,8 +784,8 @@ workflow.onComplete {
     def host_removal_params = [ skip_host_removal: params.skip_host_removal ]
     if (!params.skip_host_removal) {
         host_removal_params += [
-            bowtie2_version: bowtie2_version,
-            samtools_version: samtools_version,
+            bowtie2_version: params.bowtie2_version,
+            samtools_version: params.samtools_version,
             host: params.host,
             host_index_dir: host_index_dir,
             save_host_reads: params.save_host_reads
