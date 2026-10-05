@@ -736,7 +736,7 @@ def workflow_version() {
 
         return git.exitValue() == 0 && version ? version : 'unknown'
     }
-    catch (IOException e) {
+    catch (IOException _e) {
         return 'unknown'
     }
 }
