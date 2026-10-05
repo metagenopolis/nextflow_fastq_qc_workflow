@@ -56,7 +56,7 @@ params.sample_list = null
 params.project_name = null
 params.help = false
 
-if (params.help || !workflow.commandLine.contains('--')) {
+def print_help(available_adapters, available_hosts) {
     log.info """
 USAGE:
     nextflow run ${workflow.scriptName} --input_dir INPUT_DIR --output_dir OUTPUT_DIR [...]
@@ -146,6 +146,11 @@ EXAMPLE:
         --host_subdir host_reads
         --project_name      my_project
 """
+}
+
+
+if (params.help || !workflow.commandLine.contains('--')) {
+    print_help(available_adapters, available_hosts)
     exit 0
 }
 
