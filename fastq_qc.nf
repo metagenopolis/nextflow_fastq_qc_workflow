@@ -562,12 +562,18 @@ def resolve_sample_dirs() {
     }
 
     if (params.sample_list) {
-        def sample_names = file(params.sample_list).readLines()
+        def sample_list = file(params.sample_list)
+
+        if (!sample_list.isFile()) {
+            error "Sample list does not exist, or is not a file: ${sample_list}"
+        }
+
+        def sample_names = sample_list.readLines()
             .collect { line -> line.trim() }
             .findAll { line -> line && !line.startsWith('#') }
 
         if (!sample_names) {
-            error "No sample name found in ${params.sample_list}"
+            error "No sample name found in ${sample_list}"
         }
 
         return sample_names.collect { sample_name -> file("${input_dir}/${sample_name}") }
