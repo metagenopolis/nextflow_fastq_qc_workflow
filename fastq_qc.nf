@@ -1,6 +1,3 @@
-import groovy.json.JsonOutput
-import java.time.format.DateTimeFormatter
-
 def fastp_version = '1.3.1'
 def bowtie2_version = '2.5.5'
 def samtools_version = '1.23.1'
@@ -763,7 +760,7 @@ workflow {
 }
 
 workflow.onComplete {
-    def datetime_formatter = DateTimeFormatter.ISO_OFFSET_DATE_TIME
+    def datetime_formatter = java.time.format.DateTimeFormatter.ISO_OFFSET_DATE_TIME
 
     def global_params = [
         project_name: project_name,
@@ -822,7 +819,7 @@ workflow.onComplete {
 
     // Création du répertoire parent si nécessaire et écriture du fichier
     reportFile.parent.mkdirs()
-    reportFile.text = JsonOutput.prettyPrint(JsonOutput.toJson(metadata))
+    reportFile.text = groovy.json.JsonOutput.prettyPrint(groovy.json.JsonOutput.toJson(metadata))
 
     log.info "Workflow metadata saved to ${reportFile}"
 }
