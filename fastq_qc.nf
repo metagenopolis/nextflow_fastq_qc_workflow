@@ -154,46 +154,78 @@ EXAMPLE:
 }
 
 
-if (params.help || !workflow.commandLine.contains('--')) {
-    print_help()
-    exit 0
+def project_name() {
+    params.project_name ?: file(params.input_dir).toAbsolutePath().parent.name
 }
 
 
-// Mandatory parameters
-if (!params.input_dir)            error "Missing required parameter: --input_dir"
-if (!params.output_dir)           error "Missing required parameter: --output_dir"
+def selected_adapters() {
+    if (params.skip_fastp || !params.adapters) {
+        return null
+    }
 
-def project_name = !params.project_name ? file(params.input_dir).toAbsolutePath().parent.name : params.project_name 
-
-def selected_adapters = null
-def fastp_opts = params.fastp_opts ?: ''
-if (!params.skip_fastp && params.adapters) {
-    if( !available_adapters().containsKey(params.adapters) ) {
+    if (!available_adapters().containsKey(params.adapters)) {
         error "Unknown sequencing adapters: ${params.adapters}\n" +
               "Supported adapters: ${available_adapters().keySet().join(', ')}"
     }
-    selected_adapters = available_adapters()[params.adapters]
-    fastp_opts += " ${selected_adapters.fastp_opts}"
+
+    available_adapters()[params.adapters]
 }
 
-def host_genome = null
-def host_index = null
-if (!params.skip_host_removal) {
-    if (!params.host)
-    {
-        error "Missing required parameter: --host\n" +
-              "If you do not want to perform host removal, use --skip_host_removal"
+
+def fastp_opts() {
+    def opts = params.fastp_opts ?: ''
+    def adapters = selected_adapters()
+
+    if (adapters) {
+        opts += " ${adapters.fastp_opts}"
     }
 
-    if (!available_hosts().contains(params.host) ) {
-        error "Unknown host: ${params.host}\n" +
-            "Supported hosts: ${available_hosts().join(', ')}"
-    }
-    host_index_dir = new File("${params.host_index_parent_dir}/${params.host}_default").getCanonicalPath()
-    host_genome = new File(host_index_dir).getName()
-    host_index = "${host_index_dir}/fasta/${host_genome}_dnaspace_index"
+    opts
 }
+
+
+def host_index_dir() {
+    new File("${params.host_index_parent_dir}/${params.host}_default").getCanonicalPath()
+}
+
+
+def host_genome() {
+    new File(host_index_dir()).getName()
+}
+
+
+def host_index() {
+    "${host_index_dir()}/fasta/${host_genome()}_dnaspace_index"
+}
+
+
+// Check the mandatory parameters before any task is launched.
+def validate_params() {
+    if (!params.input_dir) {
+        error "Missing required parameter: --input_dir"
+    }
+
+    if (!params.output_dir) {
+        error "Missing required parameter: --output_dir"
+    }
+
+    // Rejects an unknown adapters name.
+    selected_adapters()
+
+    if (!params.skip_host_removal) {
+        if (!params.host) {
+            error "Missing required parameter: --host\n" +
+                  "If you do not want to perform host removal, use --skip_host_removal"
+        }
+
+        if (!available_hosts().contains(params.host)) {
+            error "Unknown host: ${params.host}\n" +
+                  "Supported hosts: ${available_hosts().join(', ')}"
+        }
+    }
+}
+
 
 process FASTP_PE {
     tag "sample: $sample_name run: $run_name"
@@ -222,8 +254,9 @@ process FASTP_PE {
     path("${sample_name}/${run_name}.fastp_report.html"), emit: fastp_reports
 
     script:
-    def fwd_adapter = selected_adapters ? " --adapter_sequence    ${selected_adapters.fwd}" : ""
-    def rev_adapter = selected_adapters ? " --adapter_sequence_r2 ${selected_adapters.rev}" : ""
+    def adapters = selected_adapters()
+    def fwd_adapter = adapters ? " --adapter_sequence    ${adapters.fwd}" : ""
+    def rev_adapter = adapters ? " --adapter_sequence_r2 ${adapters.rev}" : ""
     """
     mkdir $sample_name
     fastp \\
@@ -232,7 +265,7 @@ process FASTP_PE {
     --cut_front --cut_tail \\
     ${fwd_adapter} \\
     ${rev_adapter} \\
-    ${fastp_opts} \\
+    ${fastp_opts()} \\
     --n_base_limit ${params.n_base_limit} \\
     --length_required ${params.length_required} \\
     --out1 ${sample_name}/${fwd_fastq_file} \\
@@ -274,7 +307,7 @@ process FASTP_SE {
     fastp \\
     -i ${fastq_file} \\
     --cut_front --cut_tail \\
-    ${fastp_opts} \\
+    ${fastp_opts()} \\
     --n_base_limit ${params.n_base_limit} \\
     --length_required ${params.length_required} \\
     -o ${sample_name}/${fastq_file} \\
@@ -347,7 +380,7 @@ process HOST_REMOVAL_PE {
     bowtie2 \\
     -1 ${fwd_fastq_file} \\
     -2 ${rev_fastq_file} \\
-    -x ${host_index} \\
+    -x ${host_index()} \\
     -p ${task.cpus}  \\
     --mm | \\
     samtools view \\
@@ -421,7 +454,7 @@ process HOST_REMOVAL_SE {
     """
     bowtie2 \\
     -U ${fastq_file} \\
-    -x ${host_index} \\
+    -x ${host_index()} \\
     -p ${task.cpus}  \\
     --mm | \\
     samtools view \\
@@ -473,7 +506,7 @@ process CREATE_INI_JSON_FILES {
     """
     mkdir ${sample_name}
     sed \\
-    -e s/__PROJECT_NAME/${project_name}/ \\
+    -e s/__PROJECT_NAME/${project_name()}/ \\
     -e s/__SAMPLE_NAME/${sample_name}/ \\
     -e s/__FULL_SAMPLE_NAME/${full_sample_name}/ \\
     -e s/__FASTQ_FILE/${fastq_file}/ \\
@@ -486,7 +519,7 @@ process CREATE_INI_JSON_FILES {
     ${baseDir}/templates/template_census_stage_0.ini > ${sample_name}/${census_stage_0_ini_file}
 
      sed \\
-    -e s/__PROJECT_NAME/${project_name}/ \\
+    -e s/__PROJECT_NAME/${project_name()}/ \\
     -e s/__SAMPLE_NAME/${sample_name}/ \\
     -e s/__FULL_SAMPLE_NAME/${full_sample_name}/ \\
     -e s/__FASTQ_FILE/${fastq_file}/ \\
@@ -508,7 +541,82 @@ include { VALIDATE_SE_RUNS as VALIDATE_AFTER_FASTP_SE_RUNS } from '././include/v
 include { VALIDATE_PE_RUNS as VALIDATE_AFTER_HOST_REMOVAL_PE_RUNS } from './include/validate_runs.nf'
 include { VALIDATE_SE_RUNS as VALIDATE_AFTER_HOST_REMOVAL_SE_RUNS } from './include/validate_runs.nf'
 
+// Write a JSON report describing the workflow execution.
+def write_workflow_summary() {
+    def datetime_formatter = java.time.format.DateTimeFormatter.ISO_OFFSET_DATE_TIME
+
+    def global_params = [
+        project_name: project_name(),
+        input_dir: file(params.input_dir).toAbsolutePath().toString(),
+        output_dir: file(params.output_dir).toAbsolutePath().toString()
+    ]
+    global_params += params.subMap(['sample_list', 'fastq_ext', 'fwd_suffix', 'rev_suffix'])
+
+    def fastp_params = [ skip_fastp: params.skip_fastp ]
+    if (!params.skip_fastp) {
+        fastp_params['fastp_version'] = params.fastp_version
+        fastp_params += params.subMap(['adapters', 'n_base_limit', 'length_required'])
+        if (params.adapters)
+        {
+            def adapters = selected_adapters()
+            fastp_params['adapters_fwd'] = adapters.fwd
+            fastp_params['adapters_rev'] = adapters.rev
+        }
+        fastp_params['fastp_opts'] = fastp_opts()
+    }
+
+    def host_removal_params = [ skip_host_removal: params.skip_host_removal ]
+    if (!params.skip_host_removal) {
+        host_removal_params += [
+            bowtie2_version: params.bowtie2_version,
+            samtools_version: params.samtools_version,
+            host: params.host,
+            host_index_dir: host_index_dir(),
+            save_host_reads: params.save_host_reads
+        ]
+
+        if (params.save_host_reads) {
+            host_removal_params += params.subMap(['host_reads_suffix', 'host_subdir'])
+        }
+    }
+
+    def metadata = [
+        workflow: [
+            name: workflow.scriptName,
+            version: "git describe --tags".execute().text.trim()
+        ],
+        execution_info: [
+            username: System.getProperty("user.name"),
+            start_time: workflow.start.format(datetime_formatter),
+            end_time: workflow.complete.format(datetime_formatter),
+            duration: workflow.duration.toString()
+        ],
+        workflow_parameters: [
+            global: global_params,
+            fastp: fastp_params,
+            host_removal: host_removal_params
+        ]
+    ]
+
+    // Définition du chemin du fichier de sortie
+    def reportFile = file("${params.output_dir}/fastq_qc_workflow_summary.json")
+
+    // Création du répertoire parent si nécessaire et écriture du fichier
+    reportFile.parent.mkdirs()
+    reportFile.text = groovy.json.JsonOutput.prettyPrint(groovy.json.JsonOutput.toJson(metadata))
+
+    log.info "Workflow metadata saved to ${reportFile}"
+}
+
+
 workflow {
+    if (params.help || !workflow.commandLine.contains('--')) {
+        print_help()
+        return
+    }
+
+    validate_params()
+
     def sample_dirs_ch = params.sample_list \
         ? Channel // If sample_list is provided, grab samples from list
             .fromPath(params.sample_list)
@@ -704,7 +812,7 @@ workflow {
 
 
     if (!params.skip_host_removal) {
-        log.info "Selected reference genome for host ${params.host}: ${host_genome}"
+        log.info "Selected reference genome for host ${params.host}: ${host_genome()}"
         // Discard reads that map to the host genome in paired FASTQ files
         after_host_removal_pe_runs_ch = HOST_REMOVAL_PE(after_fastp_validated_pe_runs_ch)
         // Discard reads that map to the host genome in single FASTQ files
@@ -765,69 +873,8 @@ workflow {
     combined_read_counts_ch = combined_read_counts_pe_ch.mix(combined_read_counts_se_ch)
 
     CREATE_INI_JSON_FILES(combined_read_counts_ch)
-}
 
-workflow.onComplete {
-    def datetime_formatter = java.time.format.DateTimeFormatter.ISO_OFFSET_DATE_TIME
-
-    def global_params = [
-        project_name: project_name,
-        input_dir: file(params.input_dir).toAbsolutePath().toString(),
-        output_dir: file(params.output_dir).toAbsolutePath().toString()
-    ]
-    global_params += params.subMap(['sample_list', 'fastq_ext', 'fwd_suffix', 'rev_suffix'])
-
-    def fastp_params = [ skip_fastp: params.skip_fastp ]
-    if (!params.skip_fastp) {
-        fastp_params['fastp_version'] = params.fastp_version
-        fastp_params += params.subMap(['adapters', 'n_base_limit', 'length_required'])
-        if (params.adapters)
-        {
-            fastp_params['adapters_fwd'] = selected_adapters.fwd
-            fastp_params['adapters_rev'] = selected_adapters.rev
-        }
-        fastp_params['fastp_opts'] = fastp_opts
+    workflow.onComplete {
+        write_workflow_summary()
     }
-
-    def host_removal_params = [ skip_host_removal: params.skip_host_removal ]
-    if (!params.skip_host_removal) {
-        host_removal_params += [
-            bowtie2_version: params.bowtie2_version,
-            samtools_version: params.samtools_version,
-            host: params.host,
-            host_index_dir: host_index_dir,
-            save_host_reads: params.save_host_reads
-        ]
-
-        if (params.save_host_reads) {
-            host_removal_params += params.subMap(['host_reads_suffix', 'host_subdir'])
-        }
-    }
-
-    def metadata = [
-        workflow: [
-            name: workflow.scriptName,
-            version: "git describe --tags".execute().text.trim()
-        ],
-        execution_info: [
-            username: System.getProperty("user.name"),
-            start_time: workflow.start.format(datetime_formatter),
-            end_time: workflow.complete.format(datetime_formatter),
-            duration: workflow.duration.toString()
-        ],
-        workflow_parameters: [
-            global: global_params,
-            fastp: fastp_params,
-            host_removal: host_removal_params
-        ]
-    ]
-
-    // Définition du chemin du fichier de sortie
-    def reportFile = file("${params.output_dir}/fastq_qc_workflow_summary.json")
-
-    // Création du répertoire parent si nécessaire et écriture du fichier
-    reportFile.parent.mkdirs()
-    reportFile.text = groovy.json.JsonOutput.prettyPrint(groovy.json.JsonOutput.toJson(metadata))
-
-    log.info "Workflow metadata saved to ${reportFile}"
 }
