@@ -541,6 +541,40 @@ include { VALIDATE_SE_RUNS as VALIDATE_AFTER_FASTP_SE_RUNS } from '././include/v
 include { VALIDATE_PE_RUNS as VALIDATE_AFTER_HOST_REMOVAL_PE_RUNS } from './include/validate_runs.nf'
 include { VALIDATE_SE_RUNS as VALIDATE_AFTER_HOST_REMOVAL_SE_RUNS } from './include/validate_runs.nf'
 
+// Extract the run name from a FASTQ file name.
+def extract_run_name(fastq_file_name) {
+    fastq_file_name
+        .replaceAll("${params.fwd_suffix}${params.fastq_ext}\$", "")
+        .replaceAll("${params.rev_suffix}${params.fastq_ext}\$", "")
+        .replaceAll("${params.fastq_ext}\$", "")
+}
+
+
+// Read the number of reads counted by the validation processes.
+def extract_read_count(read_count_file) {
+    read_count_file.readLines()[0].trim().toLong()
+}
+
+
+// Replace the read count file of each run by the read count it holds.
+def extract_read_counts_pe(pe_runs_ch) {
+    pe_runs_ch.map { items ->
+        def (sample_name, run_name, fwd_fastq_file, rev_fastq_file, read_count_file) = items
+        def read_count = extract_read_count(read_count_file)
+        [sample_name, run_name, fwd_fastq_file, rev_fastq_file, read_count]
+    }
+}
+
+
+def extract_read_counts_se(se_runs_ch) {
+    se_runs_ch.map { items ->
+        def (sample_name, run_name, fastq_file, read_count_file) = items
+        def read_count = extract_read_count(read_count_file)
+        [sample_name, run_name, fastq_file, read_count]
+    }
+}
+
+
 // Write a JSON report describing the workflow execution.
 def write_workflow_summary() {
     def datetime_formatter = java.time.format.DateTimeFormatter.ISO_OFFSET_DATE_TIME
@@ -662,29 +696,21 @@ workflow {
                 !it.name.endsWith("${params.rev_suffix}${params.fastq_ext}")
             }
 
-            // Extract run name from filename
-            def extractRun = { fastq_file_name ->
-                fastq_file_name
-                    .replaceAll("${params.fwd_suffix}${params.fastq_ext}\$", "")
-                    .replaceAll("${params.rev_suffix}${params.fastq_ext}\$", "")
-                    .replaceAll("${params.fastq_ext}\$", "")
-            }
-
             // Group by run name
             def runs = [:].withDefault { [fwd: null, rev: null, se: null] }
 
             fwd_fastq_files.each { fastq_file ->
-                def run_name = extractRun(fastq_file.name)
+                def run_name = extract_run_name(fastq_file.name)
                 runs[run_name].fwd = fastq_file
             }
 
             rev_fastq_files.each { fastq_file ->
-                def run_name = extractRun(fastq_file.name)
+                def run_name = extract_run_name(fastq_file.name)
                 runs[run_name].rev= fastq_file
             }
 
             se_fastq_files.each { fastq_file ->
-                def run_name = extractRun(fastq_file.name)
+                def run_name = extract_run_name(fastq_file.name)
                 runs[run_name].se = fastq_file
             }
 
@@ -756,24 +782,6 @@ workflow {
         {
             log.warn "No paired-end runs found."
             log.warn "If you expected paired-end data, please check the --fwd_suffix and --rev_suffix parameters"
-        }
-    }
-
-    def extract_read_count = { read_count_file ->
-        return read_count_file.readLines()[0].trim().toLong()
-    }
-    def extract_read_counts_pe = { pe_runs_ch ->
-        pe_runs_ch.map { items ->
-            def (sample_name, run_name, fwd_fastq_file, rev_fastq_file, read_count_file) = items
-            def read_count = extract_read_count(read_count_file)
-            [sample_name, run_name, fwd_fastq_file, rev_fastq_file, read_count]
-        }
-    }
-    def extract_read_counts_se = { se_runs_ch ->
-        se_runs_ch.map { items ->
-            def (sample_name, run_name, fastq_file, read_count_file) = items
-            def read_count = extract_read_count(read_count_file)
-            [sample_name, run_name, fastq_file, read_count]
         }
     }
 
