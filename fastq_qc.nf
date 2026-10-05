@@ -377,6 +377,8 @@ process HOST_REMOVAL_PE {
     ${run_name}.bam
     """ : ""
     """
+    set -o pipefail
+
     bowtie2 \\
     -1 ${fwd_fastq_file} \\
     -2 ${rev_fastq_file} \\
@@ -452,6 +454,8 @@ process HOST_REMOVAL_SE {
     ${run_name}.bam
     """ : ""
     """
+    set -o pipefail
+
     bowtie2 \\
     -U ${fastq_file} \\
     -x ${host_index()} \\
