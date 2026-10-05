@@ -23,6 +23,8 @@ process VALIDATE_PE_RUNS {
 
     script:
     """
+    set -o pipefail
+
     # Check files integrity
     gzip -tvf ${fwd_fastq_file}
     gzip -tvf ${rev_fastq_file}
@@ -80,6 +82,8 @@ process VALIDATE_SE_RUNS {
 
     script:
     """
+    set -o pipefail
+
     # Check file integrity
     gzip -tvf ${fastq_file}
 
