@@ -576,6 +576,18 @@ def resolve_sample_dirs() {
             error "No sample name found in ${sample_list}"
         }
 
+        // A sample listed twice would be processed twice, with both runs writing
+        // the same published files, so reject it rather than silently dropping it.
+        def duplicates = sample_names.countBy { sample_name -> sample_name }
+            .findAll { entry -> entry.value > 1 }
+            .keySet()
+            .sort()
+
+        if (duplicates) {
+            error "Duplicate sample names in ${sample_list}:\n" +
+                duplicates.collect { sample_name -> "  - ${sample_name}" }.join("\n")
+        }
+
         return sample_names.collect { sample_name -> file("${input_dir}/${sample_name}") }
     }
 
