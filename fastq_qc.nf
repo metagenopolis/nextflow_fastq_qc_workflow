@@ -177,7 +177,7 @@ def fastp_opts() {
     def opts = params.fastp_opts ?: ''
     def adapters = selected_adapters()
 
-    if (adapters) {
+    if (adapters?.fastp_opts) {
         opts += " ${adapters.fastp_opts}"
     }
 
