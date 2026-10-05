@@ -652,7 +652,7 @@ workflow {
     validate_params()
 
     def sample_dirs_ch = params.sample_list \
-        ? Channel // If sample_list is provided, grab samples from list
+        ? channel // If sample_list is provided, grab samples from list
             .fromPath(params.sample_list)
             .splitText()
             .map { line ->
@@ -666,7 +666,7 @@ workflow {
 
                 return sample_dir
             }
-        : Channel // If sample_list is not provided, use all subdirectories
+        : channel // If sample_list is not provided, use all subdirectories
             .fromPath("${params.input_dir}/*", type: 'dir')
 
     def sample_count_ch = sample_dirs_ch.count()
