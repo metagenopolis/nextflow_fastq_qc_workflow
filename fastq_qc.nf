@@ -680,8 +680,8 @@ workflow {
 
             def sample_name = sample_dir.getName()
 
-            def all_fastq_files = sample_dir.listFiles().findAll {
-                it.name.endsWith(params.fastq_ext)
+            def all_fastq_files = sample_dir.listFiles().findAll { fastq_file ->
+                fastq_file.name.endsWith(params.fastq_ext)
             }.sort()
 
             if (all_fastq_files.isEmpty()) {
@@ -689,11 +689,11 @@ workflow {
                 "Check that your FASTQ file extension matches the value of --fastq_ext (currently '${params.fastq_ext}')"
             }
 
-            def fwd_fastq_files = all_fastq_files.findAll { it.name.endsWith("${params.fwd_suffix}${params.fastq_ext}") }
-            def rev_fastq_files = all_fastq_files.findAll { it.name.endsWith("${params.rev_suffix}${params.fastq_ext}") }
-            def se_fastq_files  = all_fastq_files.findAll {
-                !it.name.endsWith("${params.fwd_suffix}${params.fastq_ext}") &&
-                !it.name.endsWith("${params.rev_suffix}${params.fastq_ext}")
+            def fwd_fastq_files = all_fastq_files.findAll { fastq_file -> fastq_file.name.endsWith("${params.fwd_suffix}${params.fastq_ext}") }
+            def rev_fastq_files = all_fastq_files.findAll { fastq_file -> fastq_file.name.endsWith("${params.rev_suffix}${params.fastq_ext}") }
+            def se_fastq_files  = all_fastq_files.findAll { fastq_file ->
+                !fastq_file.name.endsWith("${params.fwd_suffix}${params.fastq_ext}") &&
+                !fastq_file.name.endsWith("${params.rev_suffix}${params.fastq_ext}")
             }
 
             // Group by run name
