@@ -541,7 +541,7 @@ process CREATE_INI_JSON_FILES {
 include { VALIDATE_PE_RUNS as VALIDATE_RAW_PE_RUNS } from './include/validate_runs.nf'
 include { VALIDATE_SE_RUNS as VALIDATE_RAW_SE_RUNS } from './include/validate_runs.nf'
 include { VALIDATE_PE_RUNS as VALIDATE_AFTER_FASTP_PE_RUNS } from './include/validate_runs.nf'
-include { VALIDATE_SE_RUNS as VALIDATE_AFTER_FASTP_SE_RUNS } from '././include/validate_runs.nf'
+include { VALIDATE_SE_RUNS as VALIDATE_AFTER_FASTP_SE_RUNS } from './include/validate_runs.nf'
 include { VALIDATE_PE_RUNS as VALIDATE_AFTER_HOST_REMOVAL_PE_RUNS } from './include/validate_runs.nf'
 include { VALIDATE_SE_RUNS as VALIDATE_AFTER_HOST_REMOVAL_SE_RUNS } from './include/validate_runs.nf'
 
