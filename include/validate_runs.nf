@@ -62,6 +62,8 @@ process VALIDATE_SE_RUNS {
     errorStrategy 'retry'
     maxRetries 1
 
+    publishDir "${params.output_dir}/${sample_name}", mode: 'copy', pattern: "*${params.fastq_ext}", enabled: params.skip_host_removal
+
     beforeScript 'source /usr/share/modules/init/bash'
     module 'seqtk/1.4'
 
