@@ -791,17 +791,32 @@ def write_workflow_summary() {
         }
     }
 
+    // This report is written whether the run succeeded or not, so it has to say
+    // which of the two happened. Without that, a summary left behind by a failed
+    // run is indistinguishable from one describing complete results.
+    def execution_info = [
+        username: System.getProperty("user.name"),
+        start_time: workflow.start.format(datetime_formatter),
+        end_time: workflow.complete.format(datetime_formatter),
+        duration: workflow.duration.toString(),
+        success: workflow.success
+    ]
+
+    if (!workflow.success) {
+        execution_info += [
+            exit_status: workflow.exitStatus,
+            // Tools that colour their output leave escape codes in the message,
+            // so drop them rather than storing them in the report.
+            error_message: workflow.errorMessage?.replaceAll("\u001B\\[[0-9;]*m", '')
+        ]
+    }
+
     def metadata = [
         workflow: [
             name: workflow.scriptName,
             version: workflow_version()
         ],
-        execution_info: [
-            username: System.getProperty("user.name"),
-            start_time: workflow.start.format(datetime_formatter),
-            end_time: workflow.complete.format(datetime_formatter),
-            duration: workflow.duration.toString()
-        ],
+        execution_info: execution_info,
         workflow_parameters: [
             global: global_params,
             fastp: fastp_params,
