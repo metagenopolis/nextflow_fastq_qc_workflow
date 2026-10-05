@@ -148,7 +148,7 @@ EXAMPLE:
         --host              Homo_sapiens \\
         --save_host_reads \\
         --host_reads_suffix '_fromHost' \\
-        --host_subdir host_reads
+        --host_subdir       host_reads \\
         --project_name      my_project
 """
 }
