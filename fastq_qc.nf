@@ -103,6 +103,9 @@ FASTP PARAMETERS:
 
     --fastp_opts PARAMS               Additional command-line options to pass directly to fastp
 
+    --fastp_version VERSION           Version of the fastp environment module to load.
+                                      Default: ${params.fastp_version}
+
 HOST REMOVAL PARAMETERS:
     --skip_host_removal               Skip host-derived reads removal
                                       Default: ${params.skip_host_removal}
@@ -110,6 +113,10 @@ HOST REMOVAL PARAMETERS:
     --host HOST                       Reads mapped to the HOST genome will be discarded
                                       Supported hosts: ${available_hosts().join(', ')}
                                       Default: ${params.host}
+
+    --host_index_parent_dir DIR       Path to the directory holding one subdirectory per host,
+                                      each containing the Bowtie 2 index of its genome.
+                                      Default: ${params.host_index_parent_dir}
 
     --save_host_reads                 Save host-derived reads to separate FASTQ files
                                       Default: ${params.save_host_reads}
@@ -120,6 +127,12 @@ HOST REMOVAL PARAMETERS:
     --host_subdir DIRNAME             Name of the subdirectory (inside each sample folder) where
                                       FASTQ files with host-derived reads will be saved.
                                       Default: ${params.host_subdir}
+
+    --bowtie2_version VERSION         Version of the bowtie2 environment module to load.
+                                      Default: ${params.bowtie2_version}
+
+    --samtools_version VERSION        Version of the samtools environment module to load.
+                                      Default: ${params.samtools_version}
 
 OTHER PARAMETERS:
     --sample_list SAMPLE_LIST         Path to a text file listing the samples to process (one sample name per line).
