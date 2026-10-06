@@ -493,6 +493,8 @@ process CREATE_INI_JSON_FILES {
     publishDir "${params.output_dir}", mode: 'copy'
 
     input:
+    path ini_template
+    path json_template
     tuple val(sample_name), val(run_name), path(fastq_file), val(tag),
     val(raw_read_count), val(after_fastp_read_count), val(after_host_removal_read_count)
 
@@ -520,7 +522,7 @@ process CREATE_INI_JSON_FILES {
     -e s/__AFTER_HOST_REMOVAL_READ_COUNT/${after_host_removal_read_count}/ \\
     -e s/__HOST_READ_COUNT/${host_read_count}/ \\
     -e s/__LOW_QUALITY_READ_COUNT/${low_quality_read_count}/ \\
-    ${baseDir}/templates/template_census_stage_0.ini > ${sample_name}/${census_stage_0_ini_file}
+    ${ini_template} > ${sample_name}/${census_stage_0_ini_file}
 
      sed \\
     -e s/__PROJECT_NAME/${project_name()}/ \\
@@ -533,7 +535,7 @@ process CREATE_INI_JSON_FILES {
     -e s/__AFTER_HOST_REMOVAL_READ_COUNT/${after_host_removal_read_count}/ \\
     -e s/__HOST_READ_COUNT/${host_read_count}/ \\
     -e s/__LOW_QUALITY_READ_COUNT/${low_quality_read_count}/ \\
-    ${baseDir}/templates/template_census_stage_0.json > ${sample_name}/${census_stage_0_json_file}
+    ${json_template} > ${sample_name}/${census_stage_0_json_file}
     """
 }
 
@@ -952,7 +954,17 @@ workflow {
      
     combined_read_counts_ch = combined_read_counts_pe_ch.mix(combined_read_counts_se_ch)
 
-    CREATE_INI_JSON_FILES(combined_read_counts_ch)
+    // first() turns each template into a value channel, so that every run is
+    // rendered from it instead of the first run consuming it.
+    def ini_template_ch = channel
+        .fromPath("${projectDir}/templates/template_census_stage_0.ini", checkIfExists: true)
+        .first()
+
+    def json_template_ch = channel
+        .fromPath("${projectDir}/templates/template_census_stage_0.json", checkIfExists: true)
+        .first()
+
+    CREATE_INI_JSON_FILES(ini_template_ch, json_template_ch, combined_read_counts_ch)
 
     workflow.onComplete {
         write_workflow_summary()
