@@ -870,7 +870,9 @@ workflow {
 
     if (pe_run_count == 0) {
         log.warn "No paired-end runs found."
-        log.warn "If you expected paired-end data, please check the --fwd_suffix and --rev_suffix parameters"
+        log.warn "If you expected paired-end data, please check the --fwd_suffix " +
+                 "(currently '${params.fwd_suffix}') and --rev_suffix (currently " +
+                 "'${params.rev_suffix}') parameters"
     }
 
     def raw_pe_runs_ch = channel.fromList(runs.paired_end)
