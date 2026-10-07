@@ -7,7 +7,7 @@ params.samtools_version = '1.23.1'
 
 
 params.skip_fastp = false
-params.fastq_ext  = ".fastq.gz"
+params.fastq_ext = ".fastq.gz"
 params.fwd_suffix = "_1"
 params.rev_suffix = "_2"
 params.n_base_limit = 0
@@ -20,7 +20,7 @@ params.host = null
 params.host_index_parent_dir = '/biodatabank/meteor-data/reference.ng'
 params.save_host_reads = false
 params.host_reads_suffix = '_Host'
-params.host_subdir= 'host'
+params.host_subdir = 'host'
 
 params.sample_list = null
 params.project_name = null
@@ -28,17 +28,17 @@ params.help = false
 
 def available_adapters() {
     [
-        'Illumina_TruSeq' : [
+        'Illumina_TruSeq': [
             fwd: 'AGATCGGAAGAGCACACGTCTGAACTCCAGTCA',
             rev: 'AGATCGGAAGAGCGTCGTGTAGGGAAAGAGTGT',
             fastp_opts: '--trim_poly_g'
         ],
-        'Illumina_Nextera' : [
+        'Illumina_Nextera': [
             fwd: 'CTGTCTCTTATACACATCTCCGAGCCCACGAGAC',
             rev: 'CTGTCTCTTATACACATCTGACGCTGCCGACGA',
             fastp_opts: '--trim_poly_g'
         ],
-        'DNBseq' : [
+        'DNBseq': [
             fwd: 'AAGTCGGAGGCCAAGCGGTCTTAGGAAGACAA',
             rev: 'AAGTCGGATCGTAGCCATGTCGTTCTGTGAGCCAAGGAGTTG',
             fastp_opts: null
@@ -323,7 +323,7 @@ def validate_params() {
 
 
 process FASTP_PE {
-    tag "sample: $sample_name run: $run_name"
+    tag "sample: ${sample_name} run: ${run_name}"
 
     cpus 8
     memory { 16.GB * task.attempt }
@@ -353,7 +353,7 @@ process FASTP_PE {
     def fwd_adapter = adapters ? " --adapter_sequence    ${adapters.fwd}" : ""
     def rev_adapter = adapters ? " --adapter_sequence_r2 ${adapters.rev}" : ""
     """
-    mkdir $sample_name
+    mkdir ${sample_name}
     fastp \\
     --in1 ${fwd_fastq_file} \\
     --in2 ${rev_fastq_file} \\
@@ -372,7 +372,7 @@ process FASTP_PE {
 }
 
 process FASTP_SE {
-    tag "sample: $sample_name run: $run_name"
+    tag "sample: ${sample_name} run: ${run_name}"
 
     cpus 8
     memory { 16.GB * task.attempt }
@@ -398,7 +398,7 @@ process FASTP_SE {
 
     script:
     """
-    mkdir $sample_name
+    mkdir ${sample_name}
     fastp \\
     -i ${fastq_file} \\
     --cut_front --cut_tail \\
@@ -414,10 +414,10 @@ process FASTP_SE {
 
 
 process HOST_REMOVAL_PE {
-    tag "sample: $sample_name run: $run_name"
+    tag "sample: ${sample_name} run: ${run_name}"
 
     cpus 8
-    memory 16.GB 
+    memory 16.GB
 
     errorStrategy 'retry'
     maxRetries 1
@@ -441,16 +441,14 @@ process HOST_REMOVAL_PE {
     optional: !params.save_host_reads, emit: host_reads_fastq_file
 
     script:
-    def host_reads_fwd_fastq_file =
-    fwd_fastq_file
+    def host_reads_fwd_fastq_file = fwd_fastq_file
         .toString()
         .replaceAll(
             "${params.fwd_suffix}${params.fastq_ext}\$",
             "${params.host_reads_suffix}${params.fwd_suffix}${params.fastq_ext}"
         )
 
-    def host_reads_rev_fastq_file =
-    rev_fastq_file
+    def host_reads_rev_fastq_file = rev_fastq_file
         .toString()
         .replaceAll(
             "${params.rev_suffix}${params.fastq_ext}\$",
@@ -502,10 +500,10 @@ process HOST_REMOVAL_PE {
 }
 
 process HOST_REMOVAL_SE {
-    tag "sample: $sample_name run: $run_name"
+    tag "sample: ${sample_name} run: ${run_name}"
 
     cpus 8
-    memory 16.GB 
+    memory 16.GB
 
     errorStrategy 'retry'
     maxRetries 1
@@ -527,8 +525,7 @@ process HOST_REMOVAL_SE {
     optional: !params.save_host_reads, emit: host_reads_fastq_file
 
     script:
-    def host_reads_fastq_file =
-    fastq_file
+    def host_reads_fastq_file = fastq_file
         .toString()
         .replaceAll(
             "${params.fastq_ext}\$",
@@ -577,7 +574,7 @@ process HOST_REMOVAL_SE {
 }
 
 process CREATE_INI_JSON_FILES {
-    tag "sample: $sample_name run: $run_name tag: $tag"
+    tag "sample: ${sample_name} run: ${run_name} tag: ${tag}"
 
     cpus 4
     memory 8.GB
@@ -1006,12 +1003,12 @@ workflow {
     validated_raw_pe_runs_ch = VALIDATE_RAW_PE_RUNS(raw_pe_runs_ch)
     raw_read_counts_pe_ch = extract_read_counts(validated_raw_pe_runs_ch)
     validated_raw_pe_runs_ch = validated_raw_pe_runs_ch.map { items -> items[0..-2] }
-    
+
     // Check integrity of raw single FASTQ files
     validated_raw_se_runs_ch = VALIDATE_RAW_SE_RUNS(raw_se_runs_ch)
     raw_read_counts_se_ch = extract_read_counts(validated_raw_se_runs_ch)
     validated_raw_se_runs_ch = validated_raw_se_runs_ch.map { items -> items[0..-2] }
-   
+
     if (!params.skip_fastp) {
         // Run fastp on raw paired FASTQ files
         after_fastp_pe_runs_ch = FASTP_PE(validated_raw_pe_runs_ch).fastq_files
@@ -1089,7 +1086,7 @@ workflow {
             [sample_name, run_name, fastq_file, "single",
             raw_read_count, after_fastp_read_count, after_host_removal_read_count]
         }
-     
+
     combined_read_counts_ch = combined_read_counts_pe_ch.mix(combined_read_counts_se_ch)
 
     // first() turns each template into a value channel, so that every run is
