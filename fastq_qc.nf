@@ -1,3 +1,6 @@
+params.input_dir = null
+params.output_dir = null
+
 params.fastp_version = '1.3.1'
 params.bowtie2_version = '2.5.5'
 params.samtools_version = '1.23.1'
