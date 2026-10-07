@@ -216,6 +216,19 @@ def host_index() {
 }
 
 
+// The input directory, checked. Both callers need it to exist: validate_params()
+// compares its real path with the output directory, resolve_sample_dirs() lists it.
+def checked_input_dir() {
+    def input_dir = file(params.input_dir)
+
+    if (!input_dir.isDirectory()) {
+        error "Input directory does not exist, or is not a directory: ${input_dir}"
+    }
+
+    input_dir
+}
+
+
 // Check the mandatory parameters before any task is launched.
 def validate_params() {
     if (!params.input_dir) {
@@ -224,6 +237,24 @@ def validate_params() {
 
     if (!params.output_dir) {
         error "Missing required parameter: --output_dir"
+    }
+
+    def input_dir = checked_input_dir()
+
+    // The output directory need not exist yet, publishDir creates it, but if the
+    // path is taken by something else every task runs to completion before the
+    // first publish fails.
+    if (file(params.output_dir).exists() && !file(params.output_dir).isDirectory()) {
+        error "Output directory exists but is not a directory: ${params.output_dir}"
+    }
+
+    // Publishing into the input directory would overwrite every raw FASTQ file
+    // with its quality-controlled version. A not-yet-created output_dir cannot
+    // alias input_dir, hence the exists() guard: toRealPath() throws
+    // NoSuchFileException on a missing path.
+    if (file(params.output_dir).exists() &&
+        input_dir.toRealPath() == file(params.output_dir).toRealPath()) {
+        error "--input_dir and --output_dir cannot be the same path"
     }
 
     // Rejects an unknown adapters name.
@@ -573,11 +604,7 @@ def strip_suffix(String name, String suffix) {
 // Return the sample directories to process, either read from the sample list
 // file or discovered as the subdirectories of the input directory.
 def resolve_sample_dirs() {
-    def input_dir = file(params.input_dir)
-
-    if (!input_dir.isDirectory()) {
-        error "Input directory does not exist, or is not a directory: ${input_dir}"
-    }
+    def input_dir = checked_input_dir()
 
     if (params.sample_list) {
         def sample_list = file(params.sample_list)
