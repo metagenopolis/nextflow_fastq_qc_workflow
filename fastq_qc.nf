@@ -854,7 +854,7 @@ def write_workflow_summary() {
 
 
 workflow {
-    if (params.help || !workflow.commandLine.contains('--')) {
+    if (params.help) {
         print_help()
         return
     }
