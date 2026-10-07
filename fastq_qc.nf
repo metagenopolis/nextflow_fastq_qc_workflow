@@ -216,6 +216,18 @@ def host_index() {
 }
 
 
+// The file name endings that identify each mate: the mate suffix followed by the
+// FASTQ extension.
+def fwd_fastq_suffix() {
+    "${params.fwd_suffix}${params.fastq_ext}"
+}
+
+
+def rev_fastq_suffix() {
+    "${params.rev_suffix}${params.fastq_ext}"
+}
+
+
 // The input directory, checked. Both callers need it to exist: validate_params()
 // compares its real path with the output directory, resolve_sample_dirs() lists it.
 def checked_input_dir() {
@@ -255,6 +267,20 @@ def validate_params() {
     if (file(params.output_dir).exists() &&
         input_dir.toRealPath() == file(params.output_dir).toRealPath()) {
         error "--input_dir and --output_dir cannot be the same path"
+    }
+
+    // File names are matched with endsWith(), forward first, so if one ending is
+    // also the tail of the other, every file matching the longer one matches the
+    // shorter too and is filed under whichever is tested first. An empty mate
+    // suffix lands here as well, since its ending is then the extension alone.
+    if (fwd_fastq_suffix().endsWith(rev_fastq_suffix()) ||
+        rev_fastq_suffix().endsWith(fwd_fastq_suffix())) {
+        error(
+            "--fwd_suffix ('${params.fwd_suffix}') and --rev_suffix " +
+            "('${params.rev_suffix}') cannot be told apart: a file name ending " +
+            "in one would also end in the other.\n" +
+            "Give the two mates distinct suffixes, neither of them empty."
+        )
     }
 
     // Rejects an unknown adapters name.
@@ -654,8 +680,8 @@ def resolve_sample_dirs() {
 // found is collected so that a broken input is reported in full, in one go,
 // before any task is launched.
 def parse_runs() {
-    def fwd_suffix = "${params.fwd_suffix}${params.fastq_ext}"
-    def rev_suffix = "${params.rev_suffix}${params.fastq_ext}"
+    def fwd_suffix = fwd_fastq_suffix()
+    def rev_suffix = rev_fastq_suffix()
 
     def pe_runs  = []
     def se_runs  = []
