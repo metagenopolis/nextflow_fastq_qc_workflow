@@ -627,6 +627,30 @@ def strip_suffix(String name, String suffix) {
 }
 
 
+def sample_name_rule() {
+    "Sample names may only contain letters, digits, '.', '_' and '-', " +
+    "and may not start with '.' or '-'."
+}
+
+
+// Sample names reach the task scripts unquoted and become published directory
+// names, so only a conservative character set is accepted. Rejecting everything
+// else also rules out a leading '-', which commands would read as an option, and,
+// together with the path separator and a leading '.', keeps a listed sample
+// inside the input directory: '.' and '..' are spelt with allowed characters
+// alone. Directory discovery skips names starting with '.' already.
+def invalid_sample_names(sample_names) {
+    sample_names
+        .findAll { sample_name ->
+            !(sample_name ==~ /[A-Za-z0-9._-]+/) ||
+            sample_name.startsWith('-') ||
+            sample_name.startsWith('.')
+        }
+        .unique()
+        .sort()
+}
+
+
 // Return the sample directories to process, either read from the sample list
 // file or discovered as the subdirectories of the input directory.
 def resolve_sample_dirs() {
@@ -645,6 +669,16 @@ def resolve_sample_dirs() {
 
         if (!sample_names) {
             error "No sample name found in ${sample_list}"
+        }
+
+        def invalid_names = invalid_sample_names(sample_names)
+
+        if (invalid_names) {
+            error(
+                "Invalid sample names in ${sample_list}:\n" +
+                invalid_names.collect { sample_name -> "  - ${sample_name}" }.join("\n") +
+                "\n" + sample_name_rule()
+            )
         }
 
         // A sample listed twice would be processed twice, with both runs writing
@@ -670,6 +704,17 @@ def resolve_sample_dirs() {
 
     if (!sample_dirs) {
         error "No sample directory found in ${input_dir}"
+    }
+
+    def invalid_dir_names = invalid_sample_names(
+        sample_dirs.collect { sample_dir -> sample_dir.getName() })
+
+    if (invalid_dir_names) {
+        error(
+            "Invalid sample directory names in ${input_dir}:\n" +
+            invalid_dir_names.collect { sample_name -> "  - ${sample_name}" }.join("\n") +
+            "\n" + sample_name_rule()
+        )
     }
 
     return sample_dirs
