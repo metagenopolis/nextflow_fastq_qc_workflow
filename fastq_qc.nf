@@ -216,6 +216,23 @@ def host_index() {
 }
 
 
+// Long rather than Integer throughout: a read length or a read count can exceed
+// the 32-bit range, and rejecting one as "not a positive integer" would be plain
+// wrong.
+def check_positive_int(name, value) {
+    if (!(value.toString().isLong() && value.toLong() > 0)) {
+        error "Parameter --${name} must be a positive integer (got '${value}')"
+    }
+}
+
+
+def check_non_negative_int(name, value) {
+    if (!(value.toString().isLong() && value.toLong() >= 0)) {
+        error "Parameter --${name} must be a positive integer or zero (got '${value}')"
+    }
+}
+
+
 // The file name endings that identify each mate: the mate suffix followed by the
 // FASTQ extension.
 def fwd_fastq_suffix() {
@@ -297,6 +314,11 @@ def validate_params() {
                   "Supported hosts: ${available_hosts().join(', ')}"
         }
     }
+
+    // Zero is a meaningful value for --n_base_limit, and its default: it discards
+    // a read as soon as it holds one undetermined base.
+    check_non_negative_int('n_base_limit', params.n_base_limit)
+    check_positive_int('length_required', params.length_required)
 }
 
 
