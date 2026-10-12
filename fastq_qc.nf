@@ -87,10 +87,10 @@ FASTQ FILES PARAMETERS:
     --fastq_ext FASTQ_EXT             FASTQ files extension.
                                       Default: ${params.fastq_ext}
 
-    --fwd_suffix FWD_SUFFIX           Suffix of forward read files.
+    --fwd_suffix FWD_SUFFIX           Suffix of forward read files, without the FASTQ extension
                                       Default: ${params.fwd_suffix}
 
-    --rev_suffix REV_SUFFIX           Suffix of reverse read files.
+    --rev_suffix REV_SUFFIX           Suffix of reverse read files, without the FASTQ extension
                                       Default: ${params.rev_suffix}
 
 FASTP PARAMETERS:
