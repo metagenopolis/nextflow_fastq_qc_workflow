@@ -14,6 +14,9 @@ params.n_base_limit = 0
 params.length_required = 60
 params.adapters = null
 params.fastp_opts = ""
+params.keep_singletons = false
+params.merge_singletons = false
+params.singletons_suffix = '.singletons'
 
 params.skip_host_removal = false
 params.host = null
@@ -106,6 +109,20 @@ FASTP PARAMETERS:
 
     --fastp_opts PARAMS               Additional command-line options to pass directly to fastp
 
+    --keep_singletons                 Keep a read whose mate was discarded by fastp, instead of
+                                      discarding the pair. Such reads are written to their own
+                                      single-end FASTQ files and go through the rest of the workflow
+                                      as single-end runs. No effect with --skip_fastp.
+                                      Default: ${params.keep_singletons}
+
+    --merge_singletons                Write the surviving forward and reverse reads to a single file,
+                                      instead of one file per mate. Either way the files are not mates
+                                      of each other and are processed as single-end runs.
+                                      Default: ${params.merge_singletons}
+
+    --singletons_suffix SUFFIX        Suffix appended to the FASTQ filenames holding singleton reads.
+                                      Default: ${params.singletons_suffix}
+
     --fastp_version VERSION           Version of the fastp environment module to load.
                                       Default: ${params.fastp_version}
 
@@ -161,6 +178,9 @@ EXAMPLE:
         --n_base_limit      1 \\
         --length_required   60 \\
         --fastp_opts='--trim_poly_x'  \\
+        --keep_singletons \\
+        --merge_singletons \\
+        --singletons_suffix '.unpaired' \\
         --host              Homo_sapiens \\
         --save_host_reads \\
         --host_reads_suffix '_fromHost' \\
@@ -300,6 +320,12 @@ def validate_params() {
         )
     }
 
+    // The singleton files must not look like a mate pair: they hold reads whose
+    // mate was discarded, so they are not paired with anything.
+    if (params.keep_singletons && !params.singletons_suffix) {
+        error "--singletons_suffix cannot be empty when --keep_singletons is used"
+    }
+
     // Rejects an unknown adapters name.
     selected_adapters()
 
@@ -348,10 +374,37 @@ process FASTP_PE {
     tuple path("${sample_name}/${run_name}.fastp_report.json"),
     path("${sample_name}/${run_name}.fastp_report.html"), emit: fastp_reports
 
+    tuple val(sample_name),
+    path("${sample_name}/*${params.singletons_suffix}${params.fastq_ext}"),
+    optional: true, emit: singleton_fastq_files
+
     script:
     def adapters = selected_adapters()
     def fwd_adapter = adapters ? " --adapter_sequence    ${adapters.fwd}" : ""
     def rev_adapter = adapters ? " --adapter_sequence_r2 ${adapters.rev}" : ""
+
+    // fastp only writes the reads whose mate was discarded when it is told where
+    // to put them. Pointing both options at one file merges the two sets.
+    def singleton_files = []
+    if (params.keep_singletons) {
+        def suffix = "${params.singletons_suffix}${params.fastq_ext}"
+        singleton_files = params.merge_singletons
+            ? ["${sample_name}/${run_name}${suffix}"] * 2
+            : ["${sample_name}/${run_name}${params.fwd_suffix}${suffix}",
+               "${sample_name}/${run_name}${params.rev_suffix}${suffix}"]
+    }
+
+    def fwd_unpaired = singleton_files ? " --unpaired1 ${singleton_files[0]}" : ""
+    def rev_unpaired = singleton_files ? " --unpaired2 ${singleton_files[1]}" : ""
+
+    // fastp creates these files even when no read was orphaned, and an empty FASTQ
+    // would fail validation further down, so drop them. Counting lines rather than
+    // peeking at the first one keeps this safe under `set -o pipefail`.
+    def singleton_cleanup = singleton_files
+        ? singleton_files.unique().collect { singleton_file ->
+            "if [ \"\$(zcat ${singleton_file} | wc -l)\" -eq 0 ] ; then rm ${singleton_file} ; fi"
+          }.join("\n    ")
+        : ""
     """
     mkdir ${sample_name}
     fastp \\
@@ -365,9 +418,13 @@ process FASTP_PE {
     --length_required ${params.length_required} \\
     --out1 ${sample_name}/${fwd_fastq_file} \\
     --out2 ${sample_name}/${rev_fastq_file} \\
+    ${fwd_unpaired} \\
+    ${rev_unpaired} \\
     --json ${sample_name}/${run_name}.fastp_report.json \\
     --html ${sample_name}/${run_name}.fastp_report.html \\
     --thread ${task.cpus}
+
+    ${singleton_cleanup}
     """
 }
 
@@ -636,6 +693,7 @@ include { VALIDATE_PE_RUNS as VALIDATE_RAW_PE_RUNS } from './include/validate_ru
 include { VALIDATE_SE_RUNS as VALIDATE_RAW_SE_RUNS } from './include/validate_runs.nf'
 include { VALIDATE_PE_RUNS as VALIDATE_AFTER_FASTP_PE_RUNS } from './include/validate_runs.nf'
 include { VALIDATE_SE_RUNS as VALIDATE_AFTER_FASTP_SE_RUNS } from './include/validate_runs.nf'
+include { VALIDATE_SE_RUNS as VALIDATE_SINGLETON_RUNS } from './include/validate_runs.nf'
 include { VALIDATE_PE_RUNS as VALIDATE_AFTER_HOST_REMOVAL_PE_RUNS } from './include/validate_runs.nf'
 include { VALIDATE_SE_RUNS as VALIDATE_AFTER_HOST_REMOVAL_SE_RUNS } from './include/validate_runs.nf'
 
@@ -901,7 +959,11 @@ def write_workflow_summary() {
     def fastp_params = [ skip_fastp: params.skip_fastp ]
     if (!params.skip_fastp) {
         fastp_params['fastp_version'] = params.fastp_version
-        fastp_params += params.subMap(['adapters', 'n_base_limit', 'length_required'])
+        fastp_params += params.subMap(['adapters', 'n_base_limit', 'length_required',
+                                       'keep_singletons'])
+        if (params.keep_singletons) {
+            fastp_params += params.subMap(['merge_singletons', 'singletons_suffix'])
+        }
         if (params.adapters)
         {
             def adapters = selected_adapters()
@@ -1024,6 +1086,32 @@ workflow {
         after_fastp_validated_se_runs_ch = VALIDATE_AFTER_FASTP_SE_RUNS(after_fastp_se_runs_ch)
         after_fastp_read_counts_se_ch = extract_read_counts(after_fastp_validated_se_runs_ch)
         after_fastp_validated_se_runs_ch = after_fastp_validated_se_runs_ch.map { items -> items[0..-2] }
+
+        if (params.keep_singletons) {
+            // Reads whose mate fastp discarded. Their run name is read back from
+            // the file name, exactly as a run of the input directory would be, so
+            // merged and split singletons need no different handling here.
+            singleton_runs_ch = FASTP_PE.out.singleton_fastq_files
+                .flatMap { sample_name, fastq_files ->
+                    (fastq_files instanceof List ? fastq_files : [fastq_files])
+                        .collect { fastq_file ->
+                            [sample_name, strip_suffix(fastq_file.name, params.fastq_ext), fastq_file]
+                        }
+                }
+
+            // Check integrity of singleton FASTQ files
+            validated_singleton_runs_ch = VALIDATE_SINGLETON_RUNS(singleton_runs_ch)
+            singleton_read_counts_ch = extract_read_counts(validated_singleton_runs_ch)
+            validated_singleton_runs_ch = validated_singleton_runs_ch.map { items -> items[0..-2] }
+
+            // A singleton library is produced by fastp, so it has no raw stage of
+            // its own: its raw count is its count after fastp, which leaves its
+            // low_quality_read_count at zero.
+            raw_read_counts_se_ch = raw_read_counts_se_ch.mix(singleton_read_counts_ch)
+            after_fastp_read_counts_se_ch = after_fastp_read_counts_se_ch.mix(singleton_read_counts_ch)
+            after_fastp_validated_se_runs_ch =
+                after_fastp_validated_se_runs_ch.mix(validated_singleton_runs_ch)
+        }
     } else {
         after_fastp_validated_pe_runs_ch = validated_raw_pe_runs_ch
         after_fastp_read_counts_pe_ch = raw_read_counts_pe_ch
